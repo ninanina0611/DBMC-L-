@@ -1,0 +1,40 @@
+# Build directories
+/build/
+/CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Visual Studio / MSVC
+*.vcxproj*
+*.sln
+*.suo
+*.user
+*.pdb
+
+# Build configurations
+/Debug/
+/Release/
+/RelWithDebInfo/
+/MinSizeRel/
+
+# Executables and libraries
+*.exe
+*.dll
+*.lib
+*.obj
+
+# CMake generated
+Makefile
+CTestTestfile.cmake
+
+# Generated project files
+lightdb_demo.vcxproj*
+ALL_BUILD.vcxproj*
+ZERO_CHECK.vcxproj*
+
+# IDE and OS files
+.DS_Store
+Thumbs.db
+
+# runtime data
+/data/
