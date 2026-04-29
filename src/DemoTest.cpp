@@ -71,9 +71,10 @@ int run_file_manager_visual_test() {
 
     print_step(1, "Create directory");
     bool ok = FileManager::create_directory(dir);
-    print_ok(ok);
+    // treat existing directory as success for repeatable runs
+    print_ok(ok || std::filesystem::exists(dir));
     print_path_state(dir);
-    if (!ok) {
+    if (!ok && !std::filesystem::exists(dir)) {
         std::cerr << "create_directory failed\n";
         return 1;
     }
@@ -311,7 +312,32 @@ int run_file_manager_visual_test() {
     std::vector<std::string> cols_out;
     std::string msg;
 
-    print_step(11, "SQL engine demo: INSERT / SELECT / UPDATE / DELETE");
+    print_step(11, "SQL DDL demo: CREATE/USE/ALTER/DROP via engine");
+    {
+        std::vector<std::vector<std::string>> dummy_rows;
+        std::vector<std::string> dummy_cols;
+        std::string dm_msg;
+        bool ok;
+        ok = engine.execute("CREATE DATABASE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
+        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = engine.execute("USE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
+        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = engine.execute("CREATE TABLE demo_users (id INT PRIMARY KEY NOT NULL, name STRING);", dummy_rows, dummy_cols, dm_msg);
+        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = engine.execute("ALTER TABLE demo_users ADD COLUMN age INT;", dummy_rows, dummy_cols, dm_msg);
+        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = engine.execute("ALTER TABLE demo_users DROP COLUMN age;", dummy_rows, dummy_cols, dm_msg);
+        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = engine.execute("DROP TABLE demo_users;", dummy_rows, dummy_cols, dm_msg);
+        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = engine.execute("DROP DATABASE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
+        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+        // restore previously used database for subsequent DML demo
+        ok = engine.execute("USE demo_db;", dummy_rows, dummy_cols, dm_msg);
+        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+    }
+
+    print_step(12, "SQL engine demo: INSERT / SELECT / UPDATE / DELETE");
     bool ok_ins1 = engine.execute("INSERT INTO users (id, name) VALUES (1, 'Alice');", rows_out, cols_out, msg);
     print_ok(ok_ins1);
     if (!ok_ins1) { std::cerr << msg << '\n'; return 1; }
@@ -320,7 +346,7 @@ int run_file_manager_visual_test() {
     print_ok(ok_ins2);
     if (!ok_ins2) { std::cerr << msg << '\n'; return 1; }
 
-    print_step(12, "Constraint validation demo");
+    print_step(13, "Constraint validation demo");
     // duplicate primary key
     bool ok_dup = engine.execute("INSERT INTO users (id, name) VALUES (1, 'Charlie');", rows_out, cols_out, msg);
     print_ok(ok_dup);
@@ -386,7 +412,7 @@ int run_file_manager_visual_test() {
     bool ok_drop_db2 = mgr.drop_database("demo_db");
     print_ok(ok_drop_db2);
 
-    print_step(13, "Cleanup");
+    print_step(14, "Cleanup");
     const bool removed_file = FileManager::remove_file(filepath);
     const bool removed_dir = FileManager::remove_directory(dir);
     std::cout << "  remove_file: " << (removed_file ? "OK" : "FAIL") << '\n';

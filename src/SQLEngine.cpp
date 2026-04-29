@@ -101,6 +101,43 @@ bool SQLEngine::execute(const std::string &sql_raw,
         return ok;
     }
 
+    // DDL / schema dispatch
+    if (stmt.type == SQLStatement::Type::CreateDatabase) {
+        bool ok = db_.create_database(stmt.db_name);
+        message = ok ? "OK" : "CREATE DATABASE failed";
+        return ok;
+    }
+    if (stmt.type == SQLStatement::Type::DropDatabase) {
+        bool ok = db_.drop_database(stmt.db_name);
+        message = ok ? "OK" : "DROP DATABASE failed";
+        return ok;
+    }
+    if (stmt.type == SQLStatement::Type::UseDatabase) {
+        bool ok = db_.use_database(stmt.db_name);
+        message = ok ? "OK" : "USE DATABASE failed";
+        return ok;
+    }
+    if (stmt.type == SQLStatement::Type::CreateTable) {
+        bool ok = db_.create_table(stmt.create_table_schema);
+        message = ok ? "OK" : "CREATE TABLE failed";
+        return ok;
+    }
+    if (stmt.type == SQLStatement::Type::DropTable) {
+        bool ok = db_.drop_table(stmt.table);
+        message = ok ? "OK" : "DROP TABLE failed";
+        return ok;
+    }
+    if (stmt.type == SQLStatement::Type::AlterTableAddColumn) {
+        bool ok = db_.add_column(stmt.alter_table, stmt.alter_column);
+        message = ok ? "OK" : "ALTER TABLE ADD COLUMN failed";
+        return ok;
+    }
+    if (stmt.type == SQLStatement::Type::AlterTableDropColumn) {
+        bool ok = db_.remove_column(stmt.alter_table, stmt.alter_column_name);
+        message = ok ? "OK" : "ALTER TABLE DROP COLUMN failed";
+        return ok;
+    }
+
     message = "unsupported statement";
     return false;
 }

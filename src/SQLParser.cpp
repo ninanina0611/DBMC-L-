@@ -32,6 +32,143 @@ bool SQLParser::parse(const std::vector<SQLToken> &tokens, SQLStatement &out_stm
         };
 
         const SQLToken &first = peek_token(tokens, idx);
+        // DDL: CREATE / DROP / ALTER / USE
+        if (first.type == SQLTokenType::Keyword && first.text == "CREATE") {
+            // CREATE DATABASE name
+            idx++;
+            if (is_kw(peek_token(tokens, idx), "DATABASE")) {
+                idx++;
+                if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected database name"; return false; }
+                out_stmt.type = SQLStatement::Type::CreateDatabase;
+                out_stmt.db_name = peek_token(tokens, idx).text; idx++;
+                return true;
+            }
+            // CREATE TABLE name ( col_def, ... )
+            if (is_kw(peek_token(tokens, idx), "TABLE")) {
+                idx++;
+                if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected table name"; return false; }
+                out_stmt.create_table_schema = DatabaseManager::TableSchema();
+                out_stmt.create_table_schema.table_name = peek_token(tokens, idx).text; idx++;
+                if (!accept(SQLTokenType::LParen)) { if (errmsg) *errmsg = "expected '(' after table name"; return false; }
+                // parse column definitions
+                while (true) {
+                    if (peek_token(tokens, idx).type == SQLTokenType::RParen) { idx++; break; }
+                    if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected column name in table definition"; return false; }
+                    DatabaseManager::Column col; col.name = peek_token(tokens, idx).text; idx++;
+
+                    // type (allow keyword or identifier)
+                    const SQLToken &typetk = peek_token(tokens, idx);
+                    if (!(typetk.type == SQLTokenType::Keyword || typetk.type == SQLTokenType::Identifier)) { if (errmsg) *errmsg = "expected type for column"; return false; }
+                    std::string tname = typetk.text; idx++;
+                    // handle VARCHAR(size)
+                    if (tname == "VARCHAR" && peek_token(tokens, idx).type == SQLTokenType::LParen) {
+                        // skip ( N )
+                        idx++; // (
+                        if (peek_token(tokens, idx).type == SQLTokenType::Number) idx++;
+                        if (!accept(SQLTokenType::RParen)) { if (errmsg) *errmsg = "expected ')' after type size"; return false; }
+                    }
+
+                    // map to DatabaseManager::Type
+                    if (tname == "INT" || tname == "INT32") col.type = DatabaseManager::Type::INT32;
+                    else if (tname == "INT64" || tname == "BIGINT") col.type = DatabaseManager::Type::INT64;
+                    else col.type = DatabaseManager::Type::STRING;
+
+                    // optional modifiers: PRIMARY KEY, NOT NULL (order-insensitive)
+                    bool seen_any = true;
+                    while (seen_any) {
+                        seen_any = false;
+                        if (is_kw(peek_token(tokens, idx), "PRIMARY")) {
+                            idx++;
+                            if (!is_kw(peek_token(tokens, idx), "KEY")) { if (errmsg) *errmsg = "expected KEY after PRIMARY"; return false; }
+                            idx++;
+                            col.is_primary = true; seen_any = true; continue;
+                        }
+                        if (is_kw(peek_token(tokens, idx), "NOT")) {
+                            idx++;
+                            if (!is_kw(peek_token(tokens, idx), "NULL")) { if (errmsg) *errmsg = "expected NULL after NOT"; return false; }
+                            idx++;
+                            col.not_null = true; seen_any = true; continue;
+                        }
+                    }
+
+                    out_stmt.create_table_schema.columns.push_back(std::move(col));
+                    if (accept(SQLTokenType::Comma)) continue;
+                    if (peek_token(tokens, idx).type == SQLTokenType::RParen) { idx++; break; }
+                    if (errmsg) *errmsg = "expected ',' or ')' in column list";
+                    return false;
+                }
+                out_stmt.type = SQLStatement::Type::CreateTable;
+                return true;
+            }
+            if (errmsg) *errmsg = "unsupported CREATE target";
+            return false;
+        }
+        if (first.type == SQLTokenType::Keyword && first.text == "DROP") {
+            idx++;
+            if (is_kw(peek_token(tokens, idx), "DATABASE")) {
+                idx++;
+                if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected database name"; return false; }
+                out_stmt.type = SQLStatement::Type::DropDatabase;
+                out_stmt.db_name = peek_token(tokens, idx).text; idx++;
+                return true;
+            }
+            if (is_kw(peek_token(tokens, idx), "TABLE")) {
+                idx++;
+                if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected table name"; return false; }
+                out_stmt.type = SQLStatement::Type::DropTable;
+                out_stmt.table = peek_token(tokens, idx).text; idx++;
+                return true;
+            }
+            if (errmsg) *errmsg = "unsupported DROP target";
+            return false;
+        }
+        if (first.type == SQLTokenType::Keyword && first.text == "ALTER") {
+            idx++;
+            if (!is_kw(peek_token(tokens, idx), "TABLE")) { if (errmsg) *errmsg = "expected TABLE after ALTER"; return false; }
+            idx++;
+            if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected table name"; return false; }
+            out_stmt.alter_table = peek_token(tokens, idx).text; idx++;
+            if (is_kw(peek_token(tokens, idx), "ADD")) {
+                idx++;
+                // optional COLUMN
+                if (is_kw(peek_token(tokens, idx), "COLUMN")) idx++;
+                // expect column def similar to CREATE TABLE single column
+                if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected column name"; return false; }
+                out_stmt.alter_column = DatabaseManager::Column();
+                out_stmt.alter_column.name = peek_token(tokens, idx).text; idx++;
+                const SQLToken &typetk = peek_token(tokens, idx);
+                if (!(typetk.type == SQLTokenType::Keyword || typetk.type == SQLTokenType::Identifier)) { if (errmsg) *errmsg = "expected type for column"; return false; }
+                std::string tname = typetk.text; idx++;
+                if (tname == "VARCHAR" && peek_token(tokens, idx).type == SQLTokenType::LParen) {
+                    idx++; if (peek_token(tokens, idx).type == SQLTokenType::Number) idx++; if (!accept(SQLTokenType::RParen)) { if (errmsg) *errmsg = "expected ')' after type size"; return false; }
+                }
+                if (tname == "INT" || tname == "INT32") out_stmt.alter_column.type = DatabaseManager::Type::INT32;
+                else if (tname == "INT64" || tname == "BIGINT") out_stmt.alter_column.type = DatabaseManager::Type::INT64;
+                else out_stmt.alter_column.type = DatabaseManager::Type::STRING;
+                // optional modifiers
+                if (is_kw(peek_token(tokens, idx), "NOT")) { idx++; if (!is_kw(peek_token(tokens, idx), "NULL")) { if (errmsg) *errmsg = "expected NULL after NOT"; return false; } idx++; out_stmt.alter_column.not_null = true; }
+                if (is_kw(peek_token(tokens, idx), "PRIMARY")) { idx++; if (!is_kw(peek_token(tokens, idx), "KEY")) { if (errmsg) *errmsg = "expected KEY after PRIMARY"; return false; } idx++; out_stmt.alter_column.is_primary = true; }
+                out_stmt.type = SQLStatement::Type::AlterTableAddColumn;
+                return true;
+            }
+            if (is_kw(peek_token(tokens, idx), "DROP")) {
+                idx++;
+                if (is_kw(peek_token(tokens, idx), "COLUMN")) idx++;
+                if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected column name to drop"; return false; }
+                out_stmt.alter_column_name = peek_token(tokens, idx).text; idx++;
+                out_stmt.type = SQLStatement::Type::AlterTableDropColumn;
+                return true;
+            }
+            if (errmsg) *errmsg = "unsupported ALTER action";
+            return false;
+        }
+        if (first.type == SQLTokenType::Keyword && first.text == "USE") {
+            idx++;
+            if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected database name after USE"; return false; }
+            out_stmt.type = SQLStatement::Type::UseDatabase;
+            out_stmt.db_name = peek_token(tokens, idx).text; idx++;
+            return true;
+        }
         if (first.type == SQLTokenType::Keyword && first.text == "INSERT") {
             // INSERT INTO table (c1,c2) VALUES (v1,v2)
             idx++;

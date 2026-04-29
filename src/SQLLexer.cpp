@@ -16,7 +16,13 @@ bool SQLLexer::tokenize(const std::string &sql, std::vector<SQLToken> &out_token
     try {
         out_tokens.clear();
         const std::unordered_set<std::string> keywords = {
-            "SELECT","INSERT","INTO","VALUES","FROM","WHERE","UPDATE","SET","DELETE","FROM"
+            "SELECT","INSERT","INTO","VALUES","FROM","WHERE","UPDATE","SET","DELETE",
+            // DDL / schema keywords
+            "CREATE","DROP","ALTER","DATABASE","TABLE","ADD","COLUMN","USE",
+            // constraints / modifiers
+            "PRIMARY","KEY","NOT","NULL",
+            // common types
+            "INT","INT32","INT64","BIGINT","VARCHAR","TEXT","STRING"
         };
 
         size_t i = 0, n = sql.size();
