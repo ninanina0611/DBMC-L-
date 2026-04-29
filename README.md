@@ -64,4 +64,18 @@
 4. 每日同步开发进度，遇到问题及时在团队内沟通解决
 
 ---
-**开发状态**：开发中（当前完成：数据存储层-文件操作模块）
+**开发状态**：开发中（新增：数据序列化/反序列化模块、数据库管理模块（支持建库/删库/选库、建表/删表、修改表结构（添加/删除字段））、数据操作模块（`DataManager`：记录存储与基础 CRUD）、简易 SQL 引擎（`SQLEngine`：支持 INSERT/SELECT/UPDATE/DELETE 的单表等值条件）；已集成演示：`DemoTest` 中展示 `FileManager`、`DatabaseManager`、`DataManager` 与 `SQLEngine` 的用例，包含序列化示例与 CRUD 演示）
+
+当前可用的快速构建与运行命令（Windows）：
+
+```bash
+cmake -S . -B build
+cmake --build build --config Debug
+build\\Debug\\lightdb_demo.exe
+```
+
+运行后可查看演示输出（PowerShell）：
+
+```powershell
+Get-Content data\\lightdb_demo_output.txt -Raw
+```
