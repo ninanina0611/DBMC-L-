@@ -258,6 +258,25 @@ int run_file_manager_visual_test() {
     print_ok(ok_ins2);
     if (!ok_ins2) { std::cerr << msg << '\n'; return 1; }
 
+    print_step(11, "Constraint validation demo");
+    // duplicate primary key
+    bool ok_dup = engine.execute("INSERT INTO users (id, name) VALUES (1, 'Charlie');", rows_out, cols_out, msg);
+    print_ok(ok_dup);
+    if (ok_dup) { std::cerr << "unexpected duplicate insert success\n"; return 1; }
+    else { std::cout << "  expected failure: " << msg << '\n'; }
+
+    // wrong type for INT32 id
+    bool ok_badtype = engine.execute("INSERT INTO users (id, name) VALUES ('abc', 'Bad');", rows_out, cols_out, msg);
+    print_ok(ok_badtype);
+    if (ok_badtype) { std::cerr << "unexpected bad-type insert success\n"; return 1; }
+    else { std::cout << "  expected failure: " << msg << '\n'; }
+
+    // not-null violation (empty id)
+    bool ok_notnull = engine.execute("INSERT INTO users (id, name) VALUES (, 'NoId');", rows_out, cols_out, msg);
+    print_ok(ok_notnull);
+    if (ok_notnull) { std::cerr << "unexpected not-null insert success\n"; return 1; }
+    else { std::cout << "  expected failure: " << msg << '\n'; }
+
     bool ok_sel1 = engine.execute("SELECT id, name FROM users;", rows_out, cols_out, msg);
     print_ok(ok_sel1);
     if (ok_sel1) {
@@ -305,7 +324,7 @@ int run_file_manager_visual_test() {
     bool ok_drop_db2 = mgr.drop_database("demo_db");
     print_ok(ok_drop_db2);
 
-    print_step(11, "Cleanup");
+    print_step(12, "Cleanup");
     const bool removed_file = FileManager::remove_file(filepath);
     const bool removed_dir = FileManager::remove_directory(dir);
     std::cout << "  remove_file: " << (removed_file ? "OK" : "FAIL") << '\n';

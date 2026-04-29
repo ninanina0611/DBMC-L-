@@ -93,8 +93,9 @@ bool SQLEngine::execute(const std::string &sql_raw,
             if (cols.size() != vals.size()) { message = "column/value count mismatch"; return false; }
             std::vector<std::pair<std::string,std::string>> pairs;
             for (size_t i = 0; i < cols.size(); ++i) pairs.emplace_back(trim(cols[i]), strip_quotes(vals[i]));
-            bool ok = dm_.insert_row(table, pairs);
-            message = ok ? "OK" : "INSERT failed";
+            std::string dm_err;
+            bool ok = dm_.insert_row(table, pairs, &dm_err);
+            message = ok ? "OK" : (dm_err.empty() ? std::string("INSERT failed") : dm_err);
             return ok;
         } else if (up.rfind("SELECT", 0) == 0) {
             // SELECT cols FROM table [WHERE col = val]
@@ -117,8 +118,9 @@ bool SQLEngine::execute(const std::string &sql_raw,
                 where_col = trim(cond.substr(0, eq));
                 where_val = strip_quotes(cond.substr(eq + 1));
             }
-            bool ok = dm_.select_rows(table, cols, where_col, where_val, out_rows, out_columns);
-            message = ok ? "OK" : "SELECT failed";
+            std::string dm_err;
+            bool ok = dm_.select_rows(table, cols, where_col, where_val, out_rows, out_columns, &dm_err);
+            message = ok ? "OK" : (dm_err.empty() ? std::string("SELECT failed") : dm_err);
             return ok;
         } else if (up.rfind("UPDATE", 0) == 0) {
             // UPDATE table SET c1=v1, c2=v2 [WHERE col=val]
@@ -129,7 +131,7 @@ bool SQLEngine::execute(const std::string &sql_raw,
             std::string set_part;
             std::string where_col, where_val;
             if (pos_where == std::string::npos) set_part = sql.substr(pos_set + 5);
-            else { set_part = sql.substr(pos_set + 5, pos_where - (pos_set + 5)); cond:; }
+            else { set_part = sql.substr(pos_set + 5, pos_where - (pos_set + 5)); }
             // parse set list
             auto assigns = split_csv(set_part);
             std::vector<std::pair<std::string,std::string>> sets;
@@ -148,8 +150,9 @@ bool SQLEngine::execute(const std::string &sql_raw,
                 where_val = strip_quotes(cond.substr(eq + 1));
             }
             size_t affected = 0;
-            bool ok = dm_.update_rows(table, sets, where_col, where_val, affected);
-            message = ok ? ("OK " + std::to_string(affected)) : "UPDATE failed";
+            std::string dm_err;
+            bool ok = dm_.update_rows(table, sets, where_col, where_val, affected, &dm_err);
+            message = ok ? ("OK " + std::to_string(affected)) : (dm_err.empty() ? std::string("UPDATE failed") : dm_err);
             return ok;
         } else if (up.rfind("DELETE", 0) == 0) {
             // DELETE FROM table [WHERE col=val]
@@ -161,8 +164,9 @@ bool SQLEngine::execute(const std::string &sql_raw,
             if (pos_where == std::string::npos) table = trim(sql.substr(pos_from + 6));
             else { table = trim(sql.substr(pos_from + 6, pos_where - (pos_from + 6))); std::string cond = sql.substr(pos_where + 7); size_t eq = cond.find('='); if (eq == std::string::npos) { message = "unsupported WHERE"; return false; } where_col = trim(cond.substr(0, eq)); where_val = strip_quotes(cond.substr(eq + 1)); }
             size_t affected = 0;
-            bool ok = dm_.delete_rows(table, where_col, where_val, affected);
-            message = ok ? ("OK " + std::to_string(affected)) : "DELETE failed";
+            std::string dm_err;
+            bool ok = dm_.delete_rows(table, where_col, where_val, affected, &dm_err);
+            message = ok ? ("OK " + std::to_string(affected)) : (dm_err.empty() ? std::string("DELETE failed") : dm_err);
             return ok;
         }
     } catch (const std::exception &e) {

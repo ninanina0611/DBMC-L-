@@ -14,7 +14,7 @@ public:
 
     // Insert row using column->value pairs. Values are strings and will be converted
     // to column types according to schema.
-    bool insert_row(const std::string &table, const std::vector<std::pair<std::string,std::string>> &col_values) noexcept;
+    bool insert_row(const std::string &table, const std::vector<std::pair<std::string,std::string>> &col_values, std::string *errmsg = nullptr) noexcept;
 
     // Select rows. If `cols` is empty or contains "*" then all columns are returned.
     // where_col/where_val may be empty to indicate no condition (match all).
@@ -23,20 +23,23 @@ public:
                      const std::string &where_col,
                      const std::string &where_val,
                      std::vector<std::vector<std::string>> &out_rows,
-                     std::vector<std::string> &out_columns) noexcept;
+                     std::vector<std::string> &out_columns,
+                     std::string *errmsg = nullptr) noexcept;
 
     // Update rows matching where condition. Returns number of affected rows in `affected`.
     bool update_rows(const std::string &table,
                      const std::vector<std::pair<std::string,std::string>> &set_values,
                      const std::string &where_col,
                      const std::string &where_val,
-                     size_t &affected) noexcept;
+                     size_t &affected,
+                     std::string *errmsg = nullptr) noexcept;
 
     // Delete rows matching where condition. Returns number deleted in `affected`.
     bool delete_rows(const std::string &table,
                      const std::string &where_col,
                      const std::string &where_val,
-                     size_t &affected) noexcept;
+                     size_t &affected,
+                     std::string *errmsg = nullptr) noexcept;
 
 private:
     DatabaseManager &db_;
