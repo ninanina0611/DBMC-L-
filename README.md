@@ -66,21 +66,25 @@
 ---
 **开发状态**：开发中
 
-- **新增模块**: 数据序列化/反序列化；数据库管理（建库/删库/选库、建表/删表、表结构修改支持）；数据操作模块（`DataManager`：记录存储与基础 CRUD）；约束校验模块（主键唯一/非空/类型校验）；SQL 解析层（`SQLLexer` + `SQLParser`）；简易 SQL 引擎（`SQLEngine`：支持 `INSERT`/`SELECT`/`UPDATE`/`DELETE`）。
+- **已开发模块**: 数据序列化/反序列化；数据库管理（建库/删库/选库、建表/删表、表结构修改支持）；数据操作模块（`DataManager`：记录存储与基础 CRUD）；约束校验模块（主键唯一/非空/类型校验）；SQL 解析层（`SQLLexer` + `SQLParser`）；简易 SQL 引擎（`SQLEngine`：支持 `INSERT`/`SELECT`/`UPDATE`/`DELETE`）。
 - **集成演示**: 在 `DemoTest` 中包含 `FileManager`、`DatabaseManager`、`DataManager`、`ConstraintValidator`、`SQLLexer`/`SQLParser` 与 `SQLEngine` 的用例（序列化示例、CRUD 与约束校验/解析演示）。
 - **DDL 支持**: 支持基础 DDL：`CREATE DATABASE`、`DROP DATABASE`、`USE`、`CREATE TABLE`、`DROP TABLE`、`ALTER TABLE ADD/DROP/MODIFY/RENAME COLUMN`；已在 `DemoTest` 中提供对应示例。
 - **表结构变更与数据迁移**: 对添加/删除/修改字段操作，系统会对已有 `.bin` 数据文件执行迁移/重写以适配新 schema。迁移采用简单填充值策略：数值字段无法转换时填 `0`；非空字符串字段填单空格；可通过显式提供的迁移默认值覆盖。
+- **错误处理/提示**: 执行层已增强错误提示能力，运行时会在常见错误场景返回更明确的错误信息（例如 `no database selected`、`unknown table: <name>`、`unknown column: <name>`、文件 I/O 错误等），并在 `DemoTest` 中新增了对应的演示用例以便观察行为与信息。
 
 当前可用的快速构建与运行命令（Windows）：
 
-```bash
+```powershell
 cmake -S . -B build
 cmake --build build --config Debug
-build\\Debug\\lightdb_demo.exe
+# 运行演示程序（默认 verbose 模式，会将输出同时写入 data/lightdb_demo_output.txt）
+build\Debug\lightdb.exe
+# 或选择 compact 模式以减少详细命令输出
+build\Debug\lightdb.exe --mode compact
 ```
 
 运行后可查看演示输出（PowerShell）：
 
 ```powershell
-Get-Content data\\lightdb_demo_output.txt -Raw
+Get-Content data\lightdb_demo_output.txt -Raw
 ```

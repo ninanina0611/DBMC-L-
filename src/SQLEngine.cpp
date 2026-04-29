@@ -118,23 +118,67 @@ bool SQLEngine::execute(const std::string &sql_raw,
         return ok;
     }
     if (stmt.type == SQLStatement::Type::CreateTable) {
+        if (db_.current_database().empty()) { message = "no database selected"; return false; }
+        // if table already exists, report that
+        {
+            DatabaseManager::TableSchema tmp;
+            if (db_.get_schema(stmt.create_table_schema.table_name, tmp)) { message = "table already exists"; return false; }
+        }
         bool ok = db_.create_table(stmt.create_table_schema);
         message = ok ? "OK" : "CREATE TABLE failed";
         return ok;
     }
     if (stmt.type == SQLStatement::Type::DropTable) {
+        if (db_.current_database().empty()) { message = "no database selected"; return false; }
+        DatabaseManager::TableSchema tmp;
+        if (!db_.get_schema(stmt.table, tmp)) { message = std::string("unknown table: ") + stmt.table; return false; }
         bool ok = db_.drop_table(stmt.table);
         message = ok ? "OK" : "DROP TABLE failed";
         return ok;
     }
     if (stmt.type == SQLStatement::Type::AlterTableAddColumn) {
+        if (db_.current_database().empty()) { message = "no database selected"; return false; }
+        DatabaseManager::TableSchema schema;
+        if (!db_.get_schema(stmt.alter_table, schema)) { message = std::string("unknown table: ") + stmt.alter_table; return false; }
+        // check column exists
+        for (const auto &c : schema.columns) if (c.name == stmt.alter_column.name) { message = std::string("column already exists: ") + c.name; return false; }
         bool ok = db_.add_column(stmt.alter_table, stmt.alter_column);
         message = ok ? "OK" : "ALTER TABLE ADD COLUMN failed";
         return ok;
     }
     if (stmt.type == SQLStatement::Type::AlterTableDropColumn) {
+        if (db_.current_database().empty()) { message = "no database selected"; return false; }
+        DatabaseManager::TableSchema schema;
+        if (!db_.get_schema(stmt.alter_table, schema)) { message = std::string("unknown table: ") + stmt.alter_table; return false; }
+        bool found = false;
+        for (const auto &c : schema.columns) if (c.name == stmt.alter_column_name) { found = true; break; }
+        if (!found) { message = std::string("unknown column: ") + stmt.alter_column_name; return false; }
         bool ok = db_.remove_column(stmt.alter_table, stmt.alter_column_name);
         message = ok ? "OK" : "ALTER TABLE DROP COLUMN failed";
+        return ok;
+    }
+    if (stmt.type == SQLStatement::Type::AlterTableModifyColumn) {
+        if (db_.current_database().empty()) { message = "no database selected"; return false; }
+        DatabaseManager::TableSchema schema;
+        if (!db_.get_schema(stmt.alter_table, schema)) { message = std::string("unknown table: ") + stmt.alter_table; return false; }
+        bool found = false;
+        for (const auto &c : schema.columns) if (c.name == stmt.alter_column_name) { found = true; break; }
+        if (!found) { message = std::string("unknown column: ") + stmt.alter_column_name; return false; }
+        bool ok = db_.modify_column(stmt.alter_table, stmt.alter_column_name, stmt.alter_column, std::string());
+        message = ok ? "OK" : "ALTER TABLE MODIFY COLUMN failed";
+        return ok;
+    }
+    if (stmt.type == SQLStatement::Type::AlterTableRenameColumn) {
+        if (db_.current_database().empty()) { message = "no database selected"; return false; }
+        DatabaseManager::TableSchema schema;
+        if (!db_.get_schema(stmt.alter_table, schema)) { message = std::string("unknown table: ") + stmt.alter_table; return false; }
+        bool found = false;
+        for (const auto &c : schema.columns) if (c.name == stmt.alter_column_name) { found = true; break; }
+        if (!found) { message = std::string("unknown column: ") + stmt.alter_column_name; return false; }
+        // check collision
+        for (const auto &c : schema.columns) if (c.name == stmt.alter_column.name) { message = std::string("column already exists: ") + c.name; return false; }
+        bool ok = db_.modify_column(stmt.alter_table, stmt.alter_column_name, stmt.alter_column, std::string());
+        message = ok ? "OK" : "ALTER TABLE RENAME COLUMN failed";
         return ok;
     }
     if (stmt.type == SQLStatement::Type::AlterTableModifyColumn) {

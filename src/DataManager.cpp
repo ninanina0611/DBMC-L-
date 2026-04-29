@@ -99,7 +99,13 @@ bool DataManager::build_record_buffer(const std::vector<DatabaseManager::Column>
 bool DataManager::insert_row(const std::string &table, const std::vector<std::pair<std::string,std::string>> &col_values, std::string *errmsg) noexcept {
     try {
         DatabaseManager::TableSchema schema;
-        if (!db_.get_schema(table, schema)) return false;
+        if (!db_.get_schema(table, schema)) {
+            if (errmsg) {
+                if (db_.current_database().empty()) *errmsg = "no database selected";
+                else *errmsg = std::string("unknown table: ") + table;
+            }
+            return false;
+        }
 
         std::unordered_map<std::string, std::string> mp;
         for (const auto &p : col_values) mp[p.first] = p.second;
@@ -113,7 +119,10 @@ bool DataManager::insert_row(const std::string &table, const std::vector<std::pa
 
         // load existing records and parse to strings for uniqueness checks
         std::vector<std::vector<char>> recs;
-        if (!load_raw_records(table, recs)) return false;
+        if (!load_raw_records(table, recs)) {
+            if (errmsg) *errmsg = "failed to load table data";
+            return false;
+        }
         std::vector<std::vector<std::string>> parsed_recs;
         for (const auto &r : recs) {
             std::vector<std::string> pf;
@@ -147,8 +156,9 @@ bool DataManager::insert_row(const std::string &table, const std::vector<std::pa
         bool w = FileManager::write_at(dataf, offset, write_buf);
         if (!w) {
             if (errmsg) *errmsg = "failed to write to data file";
+            return false;
         }
-        return w;
+        return true;
     } catch (...) {
         if (errmsg) *errmsg = "exception in insert_row";
         return false;
@@ -164,10 +174,19 @@ bool DataManager::select_rows(const std::string &table,
                               std::string *errmsg) noexcept {
     try {
         DatabaseManager::TableSchema schema;
-        if (!db_.get_schema(table, schema)) return false;
+        if (!db_.get_schema(table, schema)) {
+            if (errmsg) {
+                if (db_.current_database().empty()) *errmsg = "no database selected";
+                else *errmsg = std::string("unknown table: ") + table;
+            }
+            return false;
+        }
 
         std::vector<std::vector<char>> recs;
-        if (!load_raw_records(table, recs)) return false;
+        if (!load_raw_records(table, recs)) {
+            if (errmsg) *errmsg = "failed to load table data";
+            return false;
+        }
 
         // Determine column indices to return
         std::vector<size_t> return_indices;
@@ -233,10 +252,19 @@ bool DataManager::update_rows(const std::string &table,
     affected = 0;
     try {
         DatabaseManager::TableSchema schema;
-        if (!db_.get_schema(table, schema)) return false;
+        if (!db_.get_schema(table, schema)) {
+            if (errmsg) {
+                if (db_.current_database().empty()) *errmsg = "no database selected";
+                else *errmsg = std::string("unknown table: ") + table;
+            }
+            return false;
+        }
 
         std::vector<std::vector<char>> recs;
-        if (!load_raw_records(table, recs)) return false;
+        if (!load_raw_records(table, recs)) {
+            if (errmsg) *errmsg = "failed to load table data";
+            return false;
+        }
 
         // parse all records first
         std::vector<std::vector<std::string>> parsed_recs;
@@ -284,25 +312,38 @@ bool DataManager::update_rows(const std::string &table,
 
             // rebuild record buffer for this row
             std::vector<char> newbuf;
-            if (!build_record_buffer(schema.columns, fields, newbuf)) return false;
+            if (!build_record_buffer(schema.columns, fields, newbuf)) {
+                if (errmsg) *errmsg = "failed to build record buffer";
+                return false;
+            }
             new_recs.push_back(std::move(newbuf));
         }
 
         // rewrite file
         const std::string dataf = data_file_path(table);
-        if (!FileManager::remove_file(dataf)) return false;
-        if (!FileManager::create_file(dataf)) return false;
+        if (!FileManager::remove_file(dataf)) {
+            if (errmsg) *errmsg = "failed to rewrite data file";
+            return false;
+        }
+        if (!FileManager::create_file(dataf)) {
+            if (errmsg) *errmsg = "failed to rewrite data file";
+            return false;
+        }
         uint64_t offset = 0;
         for (const auto &rb : new_recs) {
             std::vector<char> write_buf;
             rdbms::serialization::write_u32_le(write_buf, static_cast<uint32_t>(rb.size()));
             if (!rb.empty()) rdbms::serialization::append_bytes(write_buf, rb.data(), rb.size());
-            if (!FileManager::write_at(dataf, offset, write_buf)) return false;
+            if (!FileManager::write_at(dataf, offset, write_buf)) {
+                if (errmsg) *errmsg = "failed to write updated data";
+                return false;
+            }
             offset += write_buf.size();
         }
 
         return true;
     } catch (...) {
+        if (errmsg) *errmsg = "exception in update_rows";
         return false;
     }
 }
@@ -315,10 +356,19 @@ bool DataManager::delete_rows(const std::string &table,
     affected = 0;
     try {
         DatabaseManager::TableSchema schema;
-        if (!db_.get_schema(table, schema)) return false;
+        if (!db_.get_schema(table, schema)) {
+            if (errmsg) {
+                if (db_.current_database().empty()) *errmsg = "no database selected";
+                else *errmsg = std::string("unknown table: ") + table;
+            }
+            return false;
+        }
 
         std::vector<std::vector<char>> recs;
-        if (!load_raw_records(table, recs)) return false;
+        if (!load_raw_records(table, recs)) {
+            if (errmsg) *errmsg = "failed to load table data";
+            return false;
+        }
 
         int where_idx = -1;
         if (!where_col.empty()) {
@@ -347,19 +397,29 @@ bool DataManager::delete_rows(const std::string &table,
 
         // rewrite file
         const std::string dataf = data_file_path(table);
-        if (!FileManager::remove_file(dataf)) return false;
-        if (!FileManager::create_file(dataf)) return false;
+        if (!FileManager::remove_file(dataf)) {
+            if (errmsg) *errmsg = "failed to rewrite data file";
+            return false;
+        }
+        if (!FileManager::create_file(dataf)) {
+            if (errmsg) *errmsg = "failed to rewrite data file";
+            return false;
+        }
         uint64_t offset = 0;
         for (const auto &rb : new_recs) {
             std::vector<char> write_buf;
             rdbms::serialization::write_u32_le(write_buf, static_cast<uint32_t>(rb.size()));
             if (!rb.empty()) rdbms::serialization::append_bytes(write_buf, rb.data(), rb.size());
-            if (!FileManager::write_at(dataf, offset, write_buf)) return false;
+            if (!FileManager::write_at(dataf, offset, write_buf)) {
+                if (errmsg) *errmsg = "failed to write updated data";
+                return false;
+            }
             offset += write_buf.size();
         }
 
         return true;
     } catch (...) {
+        if (errmsg) *errmsg = "exception in delete_rows";
         return false;
     }
 }

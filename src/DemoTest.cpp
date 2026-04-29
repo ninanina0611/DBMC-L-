@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
+#include <memory>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -15,6 +17,28 @@
 #include "../include/SQLParser.h"
 
 namespace {
+
+// Tee streambuf: writes to two streambufs
+class TeeBuf : public std::streambuf {
+public:
+    TeeBuf(std::streambuf *a, std::streambuf *b) : sb1(a), sb2(b) {}
+protected:
+    int overflow(int c) override {
+        if (c == EOF) return !EOF;
+        const int r1 = sb1->sputc(c);
+        const int r2 = sb2 ? sb2->sputc(c) : r1;
+        return (r1 == EOF || r2 == EOF) ? EOF : c;
+    }
+    int sync() override {
+        const int r1 = sb1->pubsync();
+        const int r2 = sb2 ? sb2->pubsync() : r1;
+        return (r1 == 0 && r2 == 0) ? 0 : -1;
+    }
+private:
+    std::streambuf *sb1;
+    std::streambuf *sb2;
+};
+
 
 void print_step(int step, const std::string &title) {
     std::cout << "\n[STEP " << step << "] " << title << '\n';
@@ -57,8 +81,87 @@ void dump_bytes(const std::vector<char> &data, std::size_t limit, std::size_t as
 
 } // namespace
 
-int run_file_manager_visual_test() {
+// Helpers to make SQL demo outputs clearer
+namespace {
+void print_sql(const std::string &sql) {
+    std::cout << "  SQL: " << sql << '\n';
+}
+
+void print_cmd(const std::string &cmd, bool verbose) {
+    if (verbose) std::cout << "  CMD: " << cmd << '\n';
+}
+
+bool exec_sql(rdbms::SQLEngine &engine, const std::string &sql,
+              std::vector<std::vector<std::string>> &out_rows,
+              std::vector<std::string> &out_cols,
+              std::string &msg) {
+    print_sql(sql);
+    bool ok = engine.execute(sql, out_rows, out_cols, msg);
+    print_ok(ok);
+    if (ok && (!out_cols.empty() || !out_rows.empty())) {
+        // prepare table-like output with column widths and separators
+        size_t ncols = std::max(out_cols.size(), out_rows.empty() ? size_t(0) : out_rows[0].size());
+        if (ncols == 0) return ok;
+        std::vector<std::string> headers(ncols);
+        for (size_t i = 0; i < ncols; ++i) headers[i] = (i < out_cols.size() ? out_cols[i] : (std::string("col") + std::to_string(i+1)));
+        std::vector<size_t> widths(ncols, 0);
+        for (size_t i = 0; i < ncols; ++i) widths[i] = headers[i].size();
+        for (const auto &r : out_rows) {
+            for (size_t i = 0; i < r.size() && i < ncols; ++i) widths[i] = std::max(widths[i], r[i].size());
+        }
+
+        auto print_sep = [&](void) {
+            std::cout << "  +";
+            for (size_t i = 0; i < ncols; ++i) {
+                std::cout << std::string(widths[i] + 2, '-') << "+";
+            }
+            std::cout << '\n';
+        };
+
+        print_sep();
+        std::cout << "  |";
+        for (size_t i = 0; i < ncols; ++i) {
+            std::cout << ' ' << std::left << std::setw(widths[i]) << headers[i] << ' ' << "|";
+        }
+        std::cout << '\n';
+        print_sep();
+
+        for (const auto &r : out_rows) {
+            std::cout << "  |";
+            for (size_t i = 0; i < ncols; ++i) {
+                const std::string v = (i < r.size() ? r[i] : std::string());
+                std::cout << ' ' << std::left << std::setw(widths[i]) << v << ' ' << "|";
+            }
+            std::cout << '\n';
+        }
+        print_sep();
+    }
+    return ok;
+}
+} // namespace
+
+int run_file_manager_visual_test(const std::string &mode) {
     using namespace rdbms;
+
+    const bool verbose = (mode != "compact");
+
+    // always write demo log to default path
+    static const std::string default_log = "data/lightdb_demo_output.txt";
+    static std::ofstream s_log;
+    static std::unique_ptr<TeeBuf> s_tee;
+    static std::streambuf *s_old = nullptr;
+    if (!s_log.is_open()) {
+        try {
+            auto p = std::filesystem::path(default_log).parent_path();
+            if (!p.empty()) std::filesystem::create_directories(p);
+        } catch (...) {}
+        s_log.open(default_log, std::ios::trunc);
+    }
+    if (s_log.is_open() && !s_tee) {
+        s_tee = std::make_unique<TeeBuf>(std::cout.rdbuf(), s_log.rdbuf());
+        s_old = std::cout.rdbuf(s_tee.get());
+        (void)s_old;
+    }
 
     const std::string dir = "data/db1";
     const std::string filepath = dir + "/table1.bin";
@@ -70,6 +173,7 @@ int run_file_manager_visual_test() {
     std::cout << "page size  : " << page_size << " bytes\n";
 
     print_step(1, "Create directory");
+    print_cmd(std::string("FileManager::create_directory(\"") + dir + "\")", verbose);
     bool ok = FileManager::create_directory(dir);
     // treat existing directory as success for repeatable runs
     print_ok(ok || std::filesystem::exists(dir));
@@ -80,6 +184,7 @@ int run_file_manager_visual_test() {
     }
 
     print_step(2, "Create file");
+    print_cmd(std::string("FileManager::create_file(\"") + filepath + "\")", verbose);
     ok = FileManager::create_file(filepath);
     print_ok(ok);
     print_path_state(filepath);
@@ -97,6 +202,7 @@ int run_file_manager_visual_test() {
     dump_bytes(page, 64, text.size());
 
     print_step(4, "Write page 0");
+    print_cmd(std::string("FileManager::write_page(\"") + filepath + "\", 0, page_size, page)", verbose);
     ok = FileManager::write_page(filepath, 0, page_size, page);
     print_ok(ok);
     print_path_state(filepath);
@@ -106,6 +212,7 @@ int run_file_manager_visual_test() {
     }
 
     print_step(5, "Read page 0");
+    print_cmd(std::string("FileManager::read_page(\"") + filepath + "\", 0, page_size, out)", verbose);
     std::vector<char> out;
     ok = FileManager::read_page(filepath, 0, page_size, out);
     print_ok(ok);
@@ -140,6 +247,7 @@ int run_file_manager_visual_test() {
     Record rec{42, "Alice", {100, 200, 300}};
     std::vector<char> rec_buf;
     // serialize fields into rec_buf
+    print_cmd("serialize Record -> rec_buf", verbose);
     rdbms::serialization::write_pod(rec_buf, rec.id);
     rdbms::serialization::write_string(rec_buf, rec.name);
     rdbms::serialization::write_vector(rec_buf, rec.values);
@@ -151,6 +259,7 @@ int run_file_manager_visual_test() {
     }
     std::copy(rec_buf.begin(), rec_buf.end(), page2.begin());
 
+    print_cmd(std::string("FileManager::write_page(\"") + filepath + "\", 1, page_size, page2)", verbose);
     bool ok2 = FileManager::write_page(filepath, 1, page_size, page2);
     print_ok(ok2);
     if (!ok2) {
@@ -160,6 +269,7 @@ int run_file_manager_visual_test() {
 
     print_step(8, "Read and deserialize record from page 1");
     std::vector<char> rec_out;
+    print_cmd(std::string("FileManager::read_page(\"") + filepath + "\", 1, page_size, rec_out)", verbose);
     bool ok3 = FileManager::read_page(filepath, 1, page_size, rec_out);
     print_ok(ok3);
     if (!ok3) {
@@ -198,12 +308,14 @@ int run_file_manager_visual_test() {
 
     print_step(9, "DatabaseManager demo: create/use db and table");
     rdbms::DatabaseManager mgr("data");
+    print_cmd("DatabaseManager::create_database(\"demo_db\")", verbose);
     bool ok_db = mgr.create_database("demo_db");
     print_ok(ok_db);
     if (!ok_db) {
         std::cerr << "create_database failed\n";
         return 1;
     }
+    print_cmd("DatabaseManager::use_database(\"demo_db\")", verbose);
     bool ok_use = mgr.use_database("demo_db");
     print_ok(ok_use);
     if (!ok_use) {
@@ -226,6 +338,7 @@ int run_file_manager_visual_test() {
     }
 
     std::vector<std::string> tables;
+    print_cmd("DatabaseManager::list_tables()", verbose);
     bool ok_list_tables = mgr.list_tables(tables);
     print_ok(ok_list_tables);
     if (ok_list_tables) {
@@ -235,6 +348,7 @@ int run_file_manager_visual_test() {
     }
 
     rdbms::DatabaseManager::TableSchema got_schema;
+    print_cmd("DatabaseManager::get_schema(\"users\")", verbose);
     bool ok_get_schema2 = mgr.get_schema("users", got_schema);
     print_ok(ok_get_schema2);
     if (ok_get_schema2) {
@@ -318,97 +432,83 @@ int run_file_manager_visual_test() {
         std::vector<std::string> dummy_cols;
         std::string dm_msg;
         bool ok;
-        ok = engine.execute("CREATE DATABASE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
-        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = engine.execute("USE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
-        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = engine.execute("CREATE TABLE demo_users (id INT PRIMARY KEY NOT NULL, name STRING);", dummy_rows, dummy_cols, dm_msg);
-        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = engine.execute("ALTER TABLE demo_users MODIFY COLUMN name VARCHAR(100) NOT NULL;", dummy_rows, dummy_cols, dm_msg);
-        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = engine.execute("ALTER TABLE demo_users RENAME COLUMN name TO fullname;", dummy_rows, dummy_cols, dm_msg);
-        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = engine.execute("ALTER TABLE demo_users ADD COLUMN age INT;", dummy_rows, dummy_cols, dm_msg);
-        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = engine.execute("ALTER TABLE demo_users DROP COLUMN age;", dummy_rows, dummy_cols, dm_msg);
-        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = engine.execute("DROP TABLE demo_users;", dummy_rows, dummy_cols, dm_msg);
-        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = engine.execute("DROP DATABASE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
-        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = exec_sql(engine, "CREATE DATABASE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
+        if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = exec_sql(engine, "USE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
+        if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = exec_sql(engine, "CREATE TABLE demo_users (id INT PRIMARY KEY NOT NULL, name STRING);", dummy_rows, dummy_cols, dm_msg);
+        if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = exec_sql(engine, "ALTER TABLE demo_users MODIFY COLUMN name VARCHAR(100) NOT NULL;", dummy_rows, dummy_cols, dm_msg);
+        if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = exec_sql(engine, "ALTER TABLE demo_users RENAME COLUMN name TO fullname;", dummy_rows, dummy_cols, dm_msg);
+        if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = exec_sql(engine, "ALTER TABLE demo_users ADD COLUMN age INT;", dummy_rows, dummy_cols, dm_msg);
+        if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = exec_sql(engine, "ALTER TABLE demo_users DROP COLUMN age;", dummy_rows, dummy_cols, dm_msg);
+        if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = exec_sql(engine, "DROP TABLE demo_users;", dummy_rows, dummy_cols, dm_msg);
+        if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = exec_sql(engine, "DROP DATABASE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
+        if (!ok) std::cerr << "  " << dm_msg << '\n';
         // restore previously used database for subsequent DML demo
-        ok = engine.execute("USE demo_db;", dummy_rows, dummy_cols, dm_msg);
-        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = exec_sql(engine, "USE demo_db;", dummy_rows, dummy_cols, dm_msg);
+        if (!ok) std::cerr << "  " << dm_msg << '\n';
     }
 
-    print_step(12, "SQL engine demo: INSERT / SELECT / UPDATE / DELETE");
-    bool ok_ins1 = engine.execute("INSERT INTO users (id, name) VALUES (1, 'Alice');", rows_out, cols_out, msg);
-    print_ok(ok_ins1);
-    if (!ok_ins1) { std::cerr << msg << '\n'; return 1; }
+    print_step(12, "Error handling demo: no DB / unknown table / unknown column");
+    {
+        std::vector<std::vector<std::string>> dummy_rows2;
+        std::vector<std::string> dummy_cols2;
+        std::string dm_msg2;
+        bool ok2;
 
-    bool ok_ins2 = engine.execute("INSERT INTO users (id, name) VALUES (2, 'Bob');", rows_out, cols_out, msg);
-    print_ok(ok_ins2);
-    if (!ok_ins2) { std::cerr << msg << '\n'; return 1; }
+        // New DatabaseManager instance without selecting a database -> expect "no database selected"
+        rdbms::DatabaseManager mgr_no_db("data");
+        rdbms::DataManager dm_no_db(mgr_no_db);
+        rdbms::SQLEngine engine_no_db(mgr_no_db, dm_no_db);
+        ok2 = exec_sql(engine_no_db, "CREATE TABLE should_fail (id INT);", dummy_rows2, dummy_cols2, dm_msg2);
+        if (!ok2) std::cerr << "  expected failure (no db): " << dm_msg2 << '\n';
 
-    print_step(13, "Constraint validation demo");
+        // unknown table
+        ok2 = exec_sql(engine, "DROP TABLE nonexist_table;", dummy_rows2, dummy_cols2, dm_msg2);
+        if (!ok2) std::cerr << "  expected failure (unknown table): " << dm_msg2 << '\n';
+
+        // unknown column: create a temp table then try to drop a non-existent column
+        ok2 = exec_sql(engine, "CREATE TABLE tmp_col_test (id INT, name STRING);", dummy_rows2, dummy_cols2, dm_msg2);
+        ok2 = exec_sql(engine, "ALTER TABLE tmp_col_test DROP COLUMN not_a_column;", dummy_rows2, dummy_cols2, dm_msg2);
+        if (!ok2) std::cerr << "  expected failure (unknown column): " << dm_msg2 << '\n';
+        ok2 = exec_sql(engine, "DROP TABLE tmp_col_test;", dummy_rows2, dummy_cols2, dm_msg2);
+    }
+
+    print_step(13, "SQL engine demo: INSERT / SELECT / UPDATE / DELETE");
+    if (!exec_sql(engine, "INSERT INTO users (id, name) VALUES (1, 'Alice');", rows_out, cols_out, msg)) { std::cerr << msg << '\n'; return 1; }
+    if (!exec_sql(engine, "INSERT INTO users (id, name) VALUES (2, 'Bob');", rows_out, cols_out, msg)) { std::cerr << msg << '\n'; return 1; }
+
+    print_step(14, "Constraint validation demo");
     // duplicate primary key
-    bool ok_dup = engine.execute("INSERT INTO users (id, name) VALUES (1, 'Charlie');", rows_out, cols_out, msg);
-    print_ok(ok_dup);
+    bool ok_dup = exec_sql(engine, "INSERT INTO users (id, name) VALUES (1, 'Charlie');", rows_out, cols_out, msg);
     if (ok_dup) { std::cerr << "unexpected duplicate insert success\n"; return 1; }
     else { std::cout << "  expected failure: " << msg << '\n'; }
 
     // wrong type for INT32 id
-    bool ok_badtype = engine.execute("INSERT INTO users (id, name) VALUES ('abc', 'Bad');", rows_out, cols_out, msg);
-    print_ok(ok_badtype);
+    bool ok_badtype = exec_sql(engine, "INSERT INTO users (id, name) VALUES ('abc', 'Bad');", rows_out, cols_out, msg);
     if (ok_badtype) { std::cerr << "unexpected bad-type insert success\n"; return 1; }
     else { std::cout << "  expected failure: " << msg << '\n'; }
 
     // not-null violation (empty id)
-    bool ok_notnull = engine.execute("INSERT INTO users (id, name) VALUES (, 'NoId');", rows_out, cols_out, msg);
-    print_ok(ok_notnull);
+    bool ok_notnull = exec_sql(engine, "INSERT INTO users (id, name) VALUES (, 'NoId');", rows_out, cols_out, msg);
     if (ok_notnull) { std::cerr << "unexpected not-null insert success\n"; return 1; }
     else { std::cout << "  expected failure: " << msg << '\n'; }
 
-    bool ok_sel1 = engine.execute("SELECT id, name FROM users;", rows_out, cols_out, msg);
-    print_ok(ok_sel1);
-    if (ok_sel1) {
-        std::cout << "  columns:";
-        for (auto &c : cols_out) std::cout << ' ' << c;
-        std::cout << '\n';
-        for (auto &r : rows_out) {
-            std::cout << "   row:";
-            for (auto &v : r) std::cout << ' ' << v;
-            std::cout << '\n';
-        }
+    if (!exec_sql(engine, "SELECT id, name FROM users;", rows_out, cols_out, msg)) {
+        std::cerr << msg << '\n';
+        return 1;
     }
 
-    bool ok_upd = engine.execute("UPDATE users SET name = 'AliceSmith' WHERE id = 1;", rows_out, cols_out, msg);
-    print_ok(ok_upd);
-    if (!ok_upd) { std::cerr << msg << '\n'; return 1; }
-
-    bool ok_sel2 = engine.execute("SELECT id, name FROM users WHERE id = 1;", rows_out, cols_out, msg);
-    print_ok(ok_sel2);
-    if (ok_sel2) {
-        for (auto &r : rows_out) {
-            std::cout << "   row:";
-            for (auto &v : r) std::cout << ' ' << v;
-            std::cout << '\n';
-        }
-    }
-
-    bool ok_del = engine.execute("DELETE FROM users WHERE id = 2;", rows_out, cols_out, msg);
-    print_ok(ok_del);
-    if (!ok_del) { std::cerr << msg << '\n'; return 1; }
-
-    bool ok_sel3 = engine.execute("SELECT id, name FROM users;", rows_out, cols_out, msg);
-    print_ok(ok_sel3);
-    if (ok_sel3) {
-        for (auto &r : rows_out) {
-            std::cout << "   row:";
-            for (auto &v : r) std::cout << ' ' << v;
-            std::cout << '\n';
-        }
-    }
+    if (!exec_sql(engine, "UPDATE users SET name = 'AliceSmith' WHERE id = 1;", rows_out, cols_out, msg)) { std::cerr << msg << '\n'; return 1; }
+    if (!exec_sql(engine, "SELECT id, name FROM users WHERE id = 1;", rows_out, cols_out, msg)) { std::cerr << msg << '\n'; return 1; }
+    if (!exec_sql(engine, "DELETE FROM users WHERE id = 2;", rows_out, cols_out, msg)) { std::cerr << msg << '\n'; return 1; }
+    if (!exec_sql(engine, "SELECT id, name FROM users;", rows_out, cols_out, msg)) { std::cerr << msg << '\n'; return 1; }
 
     bool ok_drop_table2 = mgr.drop_table("users");
     print_ok(ok_drop_table2);
@@ -416,8 +516,10 @@ int run_file_manager_visual_test() {
     bool ok_drop_db2 = mgr.drop_database("demo_db");
     print_ok(ok_drop_db2);
 
-    print_step(14, "Cleanup");
+    print_step(15, "Cleanup");
+    print_cmd(std::string("FileManager::remove_file(\"") + filepath + "\")", verbose);
     const bool removed_file = FileManager::remove_file(filepath);
+    print_cmd(std::string("FileManager::remove_directory(\"") + dir + "\")", verbose);
     const bool removed_dir = FileManager::remove_directory(dir);
     std::cout << "  remove_file: " << (removed_file ? "OK" : "FAIL") << '\n';
     std::cout << "  remove_directory: " << (removed_dir ? "OK" : "FAIL") << '\n';
