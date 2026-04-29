@@ -44,13 +44,14 @@ public:
     bool list_tables(std::vector<std::string> &out) const noexcept;
     bool get_schema(const std::string &table_name, TableSchema &out) const noexcept;
 
+    // Expose file path helpers so other modules can access table files
+    std::string meta_file_path(const std::string &table_name) const noexcept;
+    std::string data_file_path(const std::string &table_name) const noexcept;
+
 private:
     std::string root_dir_;
     std::string current_db_;
     std::string db_path_;
-
-    std::string meta_file_path(const std::string &table_name) const noexcept;
-    std::string data_file_path(const std::string &table_name) const noexcept;
 
     bool write_schema_file(const TableSchema &schema) noexcept;
     bool read_schema_file(const std::string &table_name, TableSchema &schema) const noexcept;

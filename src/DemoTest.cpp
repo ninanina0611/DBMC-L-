@@ -9,6 +9,8 @@
 #include "../include/FileManager.h"
 #include "../include/Serializer.h"
 #include "../include/DatabaseManager.h"
+#include "../include/DataManager.h"
+#include "../include/SQLEngine.h"
 
 namespace {
 
@@ -239,13 +241,71 @@ int run_file_manager_visual_test() {
         std::cout << '\n';
     }
 
+    // --- SQL engine demo using DataManager ---
+    rdbms::DataManager dm(mgr);
+    rdbms::SQLEngine engine(mgr, dm);
+
+    std::vector<std::vector<std::string>> rows_out;
+    std::vector<std::string> cols_out;
+    std::string msg;
+
+    print_step(10, "SQL engine demo: INSERT / SELECT / UPDATE / DELETE");
+    bool ok_ins1 = engine.execute("INSERT INTO users (id, name) VALUES (1, 'Alice');", rows_out, cols_out, msg);
+    print_ok(ok_ins1);
+    if (!ok_ins1) { std::cerr << msg << '\n'; return 1; }
+
+    bool ok_ins2 = engine.execute("INSERT INTO users (id, name) VALUES (2, 'Bob');", rows_out, cols_out, msg);
+    print_ok(ok_ins2);
+    if (!ok_ins2) { std::cerr << msg << '\n'; return 1; }
+
+    bool ok_sel1 = engine.execute("SELECT id, name FROM users;", rows_out, cols_out, msg);
+    print_ok(ok_sel1);
+    if (ok_sel1) {
+        std::cout << "  columns:";
+        for (auto &c : cols_out) std::cout << ' ' << c;
+        std::cout << '\n';
+        for (auto &r : rows_out) {
+            std::cout << "   row:";
+            for (auto &v : r) std::cout << ' ' << v;
+            std::cout << '\n';
+        }
+    }
+
+    bool ok_upd = engine.execute("UPDATE users SET name = 'AliceSmith' WHERE id = 1;", rows_out, cols_out, msg);
+    print_ok(ok_upd);
+    if (!ok_upd) { std::cerr << msg << '\n'; return 1; }
+
+    bool ok_sel2 = engine.execute("SELECT id, name FROM users WHERE id = 1;", rows_out, cols_out, msg);
+    print_ok(ok_sel2);
+    if (ok_sel2) {
+        for (auto &r : rows_out) {
+            std::cout << "   row:";
+            for (auto &v : r) std::cout << ' ' << v;
+            std::cout << '\n';
+        }
+    }
+
+    bool ok_del = engine.execute("DELETE FROM users WHERE id = 2;", rows_out, cols_out, msg);
+    print_ok(ok_del);
+    if (!ok_del) { std::cerr << msg << '\n'; return 1; }
+
+    bool ok_sel3 = engine.execute("SELECT id, name FROM users;", rows_out, cols_out, msg);
+    print_ok(ok_sel3);
+    if (ok_sel3) {
+        for (auto &r : rows_out) {
+            std::cout << "   row:";
+            for (auto &v : r) std::cout << ' ' << v;
+            std::cout << '\n';
+        }
+    }
+
     bool ok_drop_table2 = mgr.drop_table("users");
     print_ok(ok_drop_table2);
 
     bool ok_drop_db2 = mgr.drop_database("demo_db");
     print_ok(ok_drop_db2);
 
-    print_step(10, "Cleanup");
+    print_step(11, "Cleanup");
     const bool removed_file = FileManager::remove_file(filepath);
     const bool removed_dir = FileManager::remove_directory(dir);
     std::cout << "  remove_file: " << (removed_file ? "OK" : "FAIL") << '\n';
