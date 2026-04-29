@@ -2,4 +2,4 @@
 
 #include <string>
 
-int run_file_manager_visual_test(const std::string &mode = "verbose");
+int run_visual_test(const std::string &mode = "verbose");

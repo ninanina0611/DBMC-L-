@@ -42,7 +42,7 @@
 2. 数据CRUD：实现INSERT/DELETE/UPDATE/SELECT，支持单表条件查询
 3. 数据持久化：本地文件存储，程序重启后可加载数据
 4. SQL语法校验：词法/语法错误、对象不存在等精准提示
-5. 命令行交互：支持多行输入、历史命令、结果格式化展示
+5. 命令行交互：支持多行输入与结果格式化展示（交互式 CLI 已实现，历史命令待完善）
 ### 拓展优化功能
 1. 简单索引：主键索引创建与维护，提升查询效率
 2. 查询优化：支持ORDER BY排序、DISTINCT去重
@@ -77,13 +77,29 @@
 ```powershell
 cmake -S . -B build
 cmake --build build --config Debug
-# 运行演示程序（默认 verbose 模式，会将输出同时写入 data/lightdb_demo_output.txt）
-build\Debug\lightdb.exe
-# 或选择 compact 模式以减少详细命令输出
-build\Debug\lightdb.exe --mode compact
 ```
 
-运行后可查看演示输出（PowerShell）：
+启动方式：
+
+```powershell
+# 启动交互式 CLI（默认，进入可交互提示符）
+build\Debug\lightdb.exe
+
+# 在 REPL 中运行脚本化演示/测试：在提示符内输入
+test
+
+# 切换数据根目录：
+root <dir>
+
+# 列出数据库、表：
+databases
+tables
+
+# 退出：
+exit
+```
+
+演示输出（脚本化测试）会写入 `data/lightdb_demo_output.txt`，可用 PowerShell 查看：
 
 ```powershell
 Get-Content data\lightdb_demo_output.txt -Raw

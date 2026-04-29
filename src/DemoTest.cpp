@@ -140,13 +140,13 @@ bool exec_sql(rdbms::SQLEngine &engine, const std::string &sql,
 }
 } // namespace
 
-int run_file_manager_visual_test(const std::string &mode) {
+int run_visual_test(const std::string &mode) {
     using namespace rdbms;
 
     const bool verbose = (mode != "compact");
 
     // always write demo log to default path
-    static const std::string default_log = "data/lightdb_demo_output.txt";
+    static const std::string default_log = "data/lightdb_test_output.txt";
     static std::ofstream s_log;
     static std::unique_ptr<TeeBuf> s_tee;
     static std::streambuf *s_old = nullptr;
@@ -167,7 +167,7 @@ int run_file_manager_visual_test(const std::string &mode) {
     const std::string filepath = dir + "/table1.bin";
     const std::size_t page_size = 4096;
 
-    std::cout << "=== FileManager visual test ===\n";
+    std::cout << "lightdb test started.\n\n";
     std::cout << "target dir : " << dir << '\n';
     std::cout << "target file: " << filepath << '\n';
     std::cout << "page size  : " << page_size << " bytes\n";
@@ -526,6 +526,6 @@ int run_file_manager_visual_test(const std::string &mode) {
     std::cout << "  file exists after cleanup: " << (std::filesystem::exists(filepath) ? "yes" : "no") << '\n';
     std::cout << "  dir exists after cleanup : " << (std::filesystem::exists(dir) ? "yes" : "no") << '\n';
 
-    std::cout << "\n=== test finished successfully ===\n";
+    std::cout << "\ntest finished successfully.\n";
     return 0;
 }
