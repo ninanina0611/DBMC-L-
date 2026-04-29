@@ -324,6 +324,10 @@ int run_file_manager_visual_test() {
         print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
         ok = engine.execute("CREATE TABLE demo_users (id INT PRIMARY KEY NOT NULL, name STRING);", dummy_rows, dummy_cols, dm_msg);
         print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = engine.execute("ALTER TABLE demo_users MODIFY COLUMN name VARCHAR(100) NOT NULL;", dummy_rows, dummy_cols, dm_msg);
+        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
+        ok = engine.execute("ALTER TABLE demo_users RENAME COLUMN name TO fullname;", dummy_rows, dummy_cols, dm_msg);
+        print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
         ok = engine.execute("ALTER TABLE demo_users ADD COLUMN age INT;", dummy_rows, dummy_cols, dm_msg);
         print_ok(ok); if (!ok) std::cerr << "  " << dm_msg << '\n';
         ok = engine.execute("ALTER TABLE demo_users DROP COLUMN age;", dummy_rows, dummy_cols, dm_msg);

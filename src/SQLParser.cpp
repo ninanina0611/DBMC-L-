@@ -159,6 +159,58 @@ bool SQLParser::parse(const std::vector<SQLToken> &tokens, SQLStatement &out_stm
                 out_stmt.type = SQLStatement::Type::AlterTableDropColumn;
                 return true;
             }
+            // ALTER TABLE ... MODIFY [COLUMN] col TYPE [NOT NULL] [PRIMARY KEY]
+            if (is_kw(peek_token(tokens, idx), "MODIFY") || is_kw(peek_token(tokens, idx), "CHANGE")) {
+                idx++;
+                if (is_kw(peek_token(tokens, idx), "COLUMN")) idx++;
+                // CHANGE may provide old and new names: "CHANGE old_name new_name TYPE"
+                if (is_kw(peek_token(tokens, idx), "COLUMN")) idx++;
+                if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected column name"; return false; }
+                std::string first_name = peek_token(tokens, idx).text; idx++;
+                std::string second_name;
+                // if CHANGE form (two identifiers) detect by looking ahead
+                if (is_kw(tokens.size() > idx ? peek_token(tokens, idx) : SQLToken{SQLTokenType::End, std::string()}, "") && false) {
+                    // unreachable placeholder
+                }
+                // If next token is identifier and next after that is a type keyword/identifier, treat as CHANGE old new type
+                if (peek_token(tokens, idx).type == SQLTokenType::Identifier && (peek_token(tokens, idx+1).type == SQLTokenType::Keyword || peek_token(tokens, idx+1).type == SQLTokenType::Identifier)) {
+                    // treat as CHANGE old_name new_name TYPE...
+                    second_name = peek_token(tokens, idx).text; idx++;
+                }
+                DatabaseManager::Column newcol;
+                // if second_name set, newcol.name = second_name; else newcol.name = first_name
+                newcol.name = second_name.empty() ? first_name : second_name;
+                // parse type
+                const SQLToken &typetk = peek_token(tokens, idx);
+                if (!(typetk.type == SQLTokenType::Keyword || typetk.type == SQLTokenType::Identifier)) { if (errmsg) *errmsg = "expected type for column"; return false; }
+                std::string tname = typetk.text; idx++;
+                if (tname == "VARCHAR" && peek_token(tokens, idx).type == SQLTokenType::LParen) { idx++; if (peek_token(tokens, idx).type == SQLTokenType::Number) idx++; if (!accept(SQLTokenType::RParen)) { if (errmsg) *errmsg = "expected ')' after type size"; return false; } }
+                if (tname == "INT" || tname == "INT32") newcol.type = DatabaseManager::Type::INT32;
+                else if (tname == "INT64" || tname == "BIGINT") newcol.type = DatabaseManager::Type::INT64;
+                else newcol.type = DatabaseManager::Type::STRING;
+                if (is_kw(peek_token(tokens, idx), "NOT")) { idx++; if (!is_kw(peek_token(tokens, idx), "NULL")) { if (errmsg) *errmsg = "expected NULL after NOT"; return false; } idx++; newcol.not_null = true; }
+                if (is_kw(peek_token(tokens, idx), "PRIMARY")) { idx++; if (!is_kw(peek_token(tokens, idx), "KEY")) { if (errmsg) *errmsg = "expected KEY after PRIMARY"; return false; } idx++; newcol.is_primary = true; }
+                out_stmt.alter_column = std::move(newcol);
+                out_stmt.alter_column_name = first_name; // old name
+                out_stmt.type = SQLStatement::Type::AlterTableModifyColumn;
+                return true;
+            }
+            // ALTER TABLE ... RENAME [COLUMN] old TO new
+            if (is_kw(peek_token(tokens, idx), "RENAME")) {
+                idx++;
+                if (is_kw(peek_token(tokens, idx), "COLUMN")) idx++;
+                if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected column name to rename"; return false; }
+                std::string oldname = peek_token(tokens, idx).text; idx++;
+                if (!is_kw(peek_token(tokens, idx), "TO")) { if (errmsg) *errmsg = "expected TO in RENAME"; return false; }
+                idx++;
+                if (peek_token(tokens, idx).type != SQLTokenType::Identifier) { if (errmsg) *errmsg = "expected new column name"; return false; }
+                std::string newname = peek_token(tokens, idx).text; idx++;
+                out_stmt.alter_column_name = oldname;
+                out_stmt.alter_column = DatabaseManager::Column();
+                out_stmt.alter_column.name = newname;
+                out_stmt.type = SQLStatement::Type::AlterTableRenameColumn;
+                return true;
+            }
             if (errmsg) *errmsg = "unsupported ALTER action";
             return false;
         }

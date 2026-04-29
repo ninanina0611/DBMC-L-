@@ -39,6 +39,12 @@ public:
     bool drop_table(const std::string &table_name) noexcept;
     bool add_column(const std::string &table_name, const Column &col) noexcept;
     bool remove_column(const std::string &table_name, const std::string &col_name) noexcept;
+    // Modify an existing column (rename and/or change type/constraints).
+    // `old_name` is the existing column name; `new_col` describes the desired column
+    // definition (may change `name`, `type`, `is_primary`, `not_null`).
+    // `default_fill` is used when migrating existing data where conversion fails
+    // or when filling values for newly added columns.
+    bool modify_column(const std::string &table_name, const std::string &old_name, const Column &new_col, const std::string &default_fill = std::string()) noexcept;
 
     bool list_databases(std::vector<std::string> &out) const noexcept;
     bool list_tables(std::vector<std::string> &out) const noexcept;

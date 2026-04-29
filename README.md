@@ -64,7 +64,12 @@
 4. 每日同步开发进度，遇到问题及时在团队内沟通解决
 
 ---
-**开发状态**：开发中（新增：数据序列化/反序列化模块、数据库管理模块（支持建库/删库/选库、建表/删表、修改表结构（添加/删除字段））、数据操作模块（`DataManager`：记录存储与基础 CRUD）、约束校验模块（主键唯一/非空/类型校验）、SQL 解析层（`SQLLexer` 词法分析 + `SQLParser` 递归下降法语法分析）、简易 SQL 引擎（`SQLEngine`：支持 INSERT/SELECT/UPDATE/DELETE 的单表等值条件）；已集成演示：`DemoTest` 中展示 `FileManager`、`DatabaseManager`、`DataManager`、`ConstraintValidator`、`SQLLexer`/`SQLParser` 与 `SQLEngine` 的用例，包含序列化示例、CRUD 与约束校验/解析演示）。SQL 层已支持基础 DDL 语句（`CREATE DATABASE` / `DROP DATABASE` / `USE` / `CREATE TABLE` / `DROP TABLE` / `ALTER TABLE ADD/DROP COLUMN`），并在 `DemoTest` 中提供了对应演示示例。
+**开发状态**：开发中
+
+- **新增模块**: 数据序列化/反序列化；数据库管理（建库/删库/选库、建表/删表、表结构修改支持）；数据操作模块（`DataManager`：记录存储与基础 CRUD）；约束校验模块（主键唯一/非空/类型校验）；SQL 解析层（`SQLLexer` + `SQLParser`）；简易 SQL 引擎（`SQLEngine`：支持 `INSERT`/`SELECT`/`UPDATE`/`DELETE`）。
+- **集成演示**: 在 `DemoTest` 中包含 `FileManager`、`DatabaseManager`、`DataManager`、`ConstraintValidator`、`SQLLexer`/`SQLParser` 与 `SQLEngine` 的用例（序列化示例、CRUD 与约束校验/解析演示）。
+- **DDL 支持**: 支持基础 DDL：`CREATE DATABASE`、`DROP DATABASE`、`USE`、`CREATE TABLE`、`DROP TABLE`、`ALTER TABLE ADD/DROP/MODIFY/RENAME COLUMN`；已在 `DemoTest` 中提供对应示例。
+- **表结构变更与数据迁移**: 对添加/删除/修改字段操作，系统会对已有 `.bin` 数据文件执行迁移/重写以适配新 schema。迁移采用简单填充值策略：数值字段无法转换时填 `0`；非空字符串字段填单空格；可通过显式提供的迁移默认值覆盖。
 
 当前可用的快速构建与运行命令（Windows）：
 

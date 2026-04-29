@@ -21,6 +21,8 @@ struct SQLStatement {
         DropTable,
         AlterTableAddColumn,
         AlterTableDropColumn,
+        AlterTableModifyColumn,
+        AlterTableRenameColumn,
         UseDatabase,
         Unknown
     } type = Type::Unknown;

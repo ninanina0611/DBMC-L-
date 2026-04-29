@@ -18,7 +18,7 @@ bool SQLLexer::tokenize(const std::string &sql, std::vector<SQLToken> &out_token
         const std::unordered_set<std::string> keywords = {
             "SELECT","INSERT","INTO","VALUES","FROM","WHERE","UPDATE","SET","DELETE",
             // DDL / schema keywords
-            "CREATE","DROP","ALTER","DATABASE","TABLE","ADD","COLUMN","USE",
+            "CREATE","DROP","ALTER","DATABASE","TABLE","ADD","COLUMN","USE","MODIFY","RENAME","TO","CHANGE",
             // constraints / modifiers
             "PRIMARY","KEY","NOT","NULL",
             // common types

@@ -137,6 +137,25 @@ bool SQLEngine::execute(const std::string &sql_raw,
         message = ok ? "OK" : "ALTER TABLE DROP COLUMN failed";
         return ok;
     }
+    if (stmt.type == SQLStatement::Type::AlterTableModifyColumn) {
+        bool ok = db_.modify_column(stmt.alter_table, stmt.alter_column_name, stmt.alter_column, std::string());
+        message = ok ? "OK" : "ALTER TABLE MODIFY COLUMN failed";
+        return ok;
+    }
+    if (stmt.type == SQLStatement::Type::AlterTableRenameColumn) {
+        // preserve existing type/flags and only rename
+        DatabaseManager::TableSchema schema;
+        if (!db_.get_schema(stmt.alter_table, schema)) { message = "failed to read schema"; return false; }
+        int idx = -1;
+        for (size_t i = 0; i < schema.columns.size(); ++i) if (schema.columns[i].name == stmt.alter_column_name) { idx = static_cast<int>(i); break; }
+        if (idx < 0) { message = "unknown column to rename"; return false; }
+        DatabaseManager::Column newcol = schema.columns[static_cast<size_t>(idx)];
+        // set new name from parsed alter_column
+        newcol.name = stmt.alter_column.name;
+        bool ok = db_.modify_column(stmt.alter_table, stmt.alter_column_name, newcol, std::string());
+        message = ok ? "OK" : "ALTER TABLE RENAME COLUMN failed";
+        return ok;
+    }
 
     message = "unsupported statement";
     return false;
