@@ -8,6 +8,7 @@
 #include "../include/DemoTest.h"
 #include "../include/FileManager.h"
 #include "../include/Serializer.h"
+#include "../include/DatabaseManager.h"
 
 namespace {
 
@@ -190,7 +191,61 @@ int run_file_manager_visual_test() {
         return 1;
     }
 
-    print_step(9, "Cleanup");
+    print_step(9, "DatabaseManager demo: create/use db and table");
+    rdbms::DatabaseManager mgr("data");
+    bool ok_db = mgr.create_database("demo_db");
+    print_ok(ok_db);
+    if (!ok_db) {
+        std::cerr << "create_database failed\n";
+        return 1;
+    }
+    bool ok_use = mgr.use_database("demo_db");
+    print_ok(ok_use);
+    if (!ok_use) {
+        std::cerr << "use_database failed\n";
+        return 1;
+    }
+
+    rdbms::DatabaseManager::TableSchema schema2;
+    schema2.table_name = "users";
+    schema2.columns = {
+        rdbms::DatabaseManager::Column{"id", rdbms::DatabaseManager::Type::INT32, true, true},
+        rdbms::DatabaseManager::Column{"name", rdbms::DatabaseManager::Type::STRING, false, false}
+    };
+
+    bool ok_create_table2 = mgr.create_table(schema2);
+    print_ok(ok_create_table2);
+    if (!ok_create_table2) {
+        std::cerr << "create_table failed\n";
+        return 1;
+    }
+
+    std::vector<std::string> tables;
+    bool ok_list_tables = mgr.list_tables(tables);
+    print_ok(ok_list_tables);
+    if (ok_list_tables) {
+        std::cout << "  tables:";
+        for (const auto &tn : tables) std::cout << ' ' << tn;
+        std::cout << '\n';
+    }
+
+    rdbms::DatabaseManager::TableSchema got_schema;
+    bool ok_get_schema2 = mgr.get_schema("users", got_schema);
+    print_ok(ok_get_schema2);
+    if (ok_get_schema2) {
+        std::cout << "  schema table: " << got_schema.table_name << '\n';
+        std::cout << "  columns:";
+        for (const auto &c : got_schema.columns) std::cout << ' ' << c.name;
+        std::cout << '\n';
+    }
+
+    bool ok_drop_table2 = mgr.drop_table("users");
+    print_ok(ok_drop_table2);
+
+    bool ok_drop_db2 = mgr.drop_database("demo_db");
+    print_ok(ok_drop_db2);
+
+    print_step(10, "Cleanup");
     const bool removed_file = FileManager::remove_file(filepath);
     const bool removed_dir = FileManager::remove_directory(dir);
     std::cout << "  remove_file: " << (removed_file ? "OK" : "FAIL") << '\n';
