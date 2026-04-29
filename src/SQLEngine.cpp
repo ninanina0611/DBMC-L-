@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include "../include/SQLLexer.h"
+#include "../include/SQLParser.h"
 
 namespace rdbms {
 
@@ -62,116 +64,41 @@ bool SQLEngine::execute(const std::string &sql_raw,
     // remove trailing semicolon
     if (!sql.empty() && sql.back() == ';') sql.pop_back();
 
-    std::string up = to_upper(sql);
+    // Use lexer + parser to build an execution plan, then dispatch to DataManager
+    std::vector<SQLToken> toks;
+    std::string lex_err;
+    if (!SQLLexer::tokenize(sql, toks, &lex_err)) { message = lex_err.empty() ? "lex error" : lex_err; return false; }
 
-    try {
-        if (up.rfind("INSERT", 0) == 0) {
-            // INSERT INTO table (c1,c2) VALUES (v1,v2)
-            size_t pos_into = up.find("INTO");
-            if (pos_into == std::string::npos) { message = "malformed INSERT"; return false; }
-            size_t p = pos_into + 4;
-            while (p < up.size() && std::isspace((unsigned char)up[p])) ++p;
-            // read table name until space or (
-            size_t table_end = p;
-            while (table_end < up.size() && !std::isspace((unsigned char)up[table_end]) && up[table_end] != '(') ++table_end;
-            std::string table = trim(sql.substr(p, table_end - p));
+    SQLStatement stmt;
+    std::string parse_err;
+    if (!SQLParser::parse(toks, stmt, &parse_err)) { message = parse_err.empty() ? "parse error" : parse_err; return false; }
 
-            size_t pos_par_open = up.find('(', table_end);
-            size_t pos_par_close = up.find(')', pos_par_open);
-            if (pos_par_open == std::string::npos || pos_par_close == std::string::npos) { message = "malformed INSERT columns"; return false; }
-            std::string cols_str = sql.substr(pos_par_open + 1, pos_par_close - pos_par_open - 1);
-            auto cols = split_csv(cols_str);
-
-            size_t pos_values = up.find("VALUES", pos_par_close);
-            if (pos_values == std::string::npos) { message = "missing VALUES"; return false; }
-            size_t val_open = up.find('(', pos_values);
-            size_t val_close = up.find(')', val_open);
-            if (val_open == std::string::npos || val_close == std::string::npos) { message = "malformed VALUES"; return false; }
-            std::string vals_str = sql.substr(val_open + 1, val_close - val_open - 1);
-            auto vals = split_csv(vals_str);
-
-            if (cols.size() != vals.size()) { message = "column/value count mismatch"; return false; }
-            std::vector<std::pair<std::string,std::string>> pairs;
-            for (size_t i = 0; i < cols.size(); ++i) pairs.emplace_back(trim(cols[i]), strip_quotes(vals[i]));
-            std::string dm_err;
-            bool ok = dm_.insert_row(table, pairs, &dm_err);
-            message = ok ? "OK" : (dm_err.empty() ? std::string("INSERT failed") : dm_err);
-            return ok;
-        } else if (up.rfind("SELECT", 0) == 0) {
-            // SELECT cols FROM table [WHERE col = val]
-            size_t pos_from = up.find(" FROM ");
-            if (pos_from == std::string::npos) { message = "malformed SELECT"; return false; }
-            std::string cols_part = sql.substr(6, pos_from - 6);
-            auto cols = split_csv(cols_part);
-            size_t pos_where = up.find(" WHERE ", pos_from);
-            std::string table;
-            if (pos_where == std::string::npos) {
-                table = trim(sql.substr(pos_from + 6));
-            } else {
-                table = trim(sql.substr(pos_from + 6, pos_where - (pos_from + 6)));
-            }
-            std::string where_col, where_val;
-            if (pos_where != std::string::npos) {
-                std::string cond = sql.substr(pos_where + 7);
-                size_t eq = cond.find('=');
-                if (eq == std::string::npos) { message = "unsupported WHERE"; return false; }
-                where_col = trim(cond.substr(0, eq));
-                where_val = strip_quotes(cond.substr(eq + 1));
-            }
-            std::string dm_err;
-            bool ok = dm_.select_rows(table, cols, where_col, where_val, out_rows, out_columns, &dm_err);
-            message = ok ? "OK" : (dm_err.empty() ? std::string("SELECT failed") : dm_err);
-            return ok;
-        } else if (up.rfind("UPDATE", 0) == 0) {
-            // UPDATE table SET c1=v1, c2=v2 [WHERE col=val]
-            size_t pos_set = up.find(" SET ");
-            if (pos_set == std::string::npos) { message = "malformed UPDATE"; return false; }
-            std::string table = trim(sql.substr(6, pos_set - 6));
-            size_t pos_where = up.find(" WHERE ", pos_set);
-            std::string set_part;
-            std::string where_col, where_val;
-            if (pos_where == std::string::npos) set_part = sql.substr(pos_set + 5);
-            else { set_part = sql.substr(pos_set + 5, pos_where - (pos_set + 5)); }
-            // parse set list
-            auto assigns = split_csv(set_part);
-            std::vector<std::pair<std::string,std::string>> sets;
-            for (auto &a : assigns) {
-                size_t eq = a.find('=');
-                if (eq == std::string::npos) { message = "malformed SET"; return false; }
-                std::string left = trim(a.substr(0, eq));
-                std::string right = strip_quotes(a.substr(eq + 1));
-                sets.emplace_back(left, right);
-            }
-            if (pos_where != std::string::npos) {
-                std::string cond = sql.substr(pos_where + 7);
-                size_t eq = cond.find('=');
-                if (eq == std::string::npos) { message = "unsupported WHERE"; return false; }
-                where_col = trim(cond.substr(0, eq));
-                where_val = strip_quotes(cond.substr(eq + 1));
-            }
-            size_t affected = 0;
-            std::string dm_err;
-            bool ok = dm_.update_rows(table, sets, where_col, where_val, affected, &dm_err);
-            message = ok ? ("OK " + std::to_string(affected)) : (dm_err.empty() ? std::string("UPDATE failed") : dm_err);
-            return ok;
-        } else if (up.rfind("DELETE", 0) == 0) {
-            // DELETE FROM table [WHERE col=val]
-            size_t pos_from = up.find(" FROM ");
-            if (pos_from == std::string::npos) { message = "malformed DELETE"; return false; }
-            size_t pos_where = up.find(" WHERE ", pos_from);
-            std::string table;
-            std::string where_col, where_val;
-            if (pos_where == std::string::npos) table = trim(sql.substr(pos_from + 6));
-            else { table = trim(sql.substr(pos_from + 6, pos_where - (pos_from + 6))); std::string cond = sql.substr(pos_where + 7); size_t eq = cond.find('='); if (eq == std::string::npos) { message = "unsupported WHERE"; return false; } where_col = trim(cond.substr(0, eq)); where_val = strip_quotes(cond.substr(eq + 1)); }
-            size_t affected = 0;
-            std::string dm_err;
-            bool ok = dm_.delete_rows(table, where_col, where_val, affected, &dm_err);
-            message = ok ? ("OK " + std::to_string(affected)) : (dm_err.empty() ? std::string("DELETE failed") : dm_err);
-            return ok;
-        }
-    } catch (const std::exception &e) {
-        message = std::string("exception: ") + e.what();
-        return false;
+    // dispatch
+    if (stmt.type == SQLStatement::Type::Insert) {
+        if (stmt.columns.size() != stmt.values.size()) { message = "column/value count mismatch"; return false; }
+        std::vector<std::pair<std::string,std::string>> pairs;
+        for (size_t i = 0; i < stmt.columns.size(); ++i) pairs.emplace_back(stmt.columns[i], stmt.values[i]);
+        std::string dm_err;
+        bool ok = dm_.insert_row(stmt.table, pairs, &dm_err);
+        message = ok ? "OK" : (dm_err.empty() ? std::string("INSERT failed") : dm_err);
+        return ok;
+    } else if (stmt.type == SQLStatement::Type::Select) {
+        std::string dm_err;
+        bool ok = dm_.select_rows(stmt.table, stmt.columns, stmt.where_col, stmt.where_val, out_rows, out_columns, &dm_err);
+        message = ok ? "OK" : (dm_err.empty() ? std::string("SELECT failed") : dm_err);
+        return ok;
+    } else if (stmt.type == SQLStatement::Type::Update) {
+        size_t affected = 0;
+        std::string dm_err;
+        bool ok = dm_.update_rows(stmt.table, stmt.assignments, stmt.where_col, stmt.where_val, affected, &dm_err);
+        message = ok ? ("OK " + std::to_string(affected)) : (dm_err.empty() ? std::string("UPDATE failed") : dm_err);
+        return ok;
+    } else if (stmt.type == SQLStatement::Type::Delete) {
+        size_t affected = 0;
+        std::string dm_err;
+        bool ok = dm_.delete_rows(stmt.table, stmt.where_col, stmt.where_val, affected, &dm_err);
+        message = ok ? ("OK " + std::to_string(affected)) : (dm_err.empty() ? std::string("DELETE failed") : dm_err);
+        return ok;
     }
 
     message = "unsupported statement";

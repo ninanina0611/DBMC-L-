@@ -18,6 +18,12 @@
 			"type": "shell",
 			"command": "cmake --build build --config Debug",
 			"isBackground": false
+		},
+		{
+			"label": "Build Debug (CMake)",
+			"type": "shell",
+			"command": "cmake --build build --config Debug",
+			"isBackground": false
 		}
 	]
 }

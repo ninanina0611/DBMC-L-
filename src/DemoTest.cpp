@@ -11,6 +11,8 @@
 #include "../include/DatabaseManager.h"
 #include "../include/DataManager.h"
 #include "../include/SQLEngine.h"
+#include "../include/SQLLexer.h"
+#include "../include/SQLParser.h"
 
 namespace {
 
@@ -241,6 +243,66 @@ int run_file_manager_visual_test() {
         std::cout << '\n';
     }
 
+    // --- SQL parser demo (lexer + parser) ---
+    print_step(10, "SQL parser demo: tokenize & parse sample");
+    {
+        const std::string sample = "INSERT INTO users (id, name) VALUES (1, 'Alice');";
+        std::vector<rdbms::SQLToken> toks;
+        std::string lex_err;
+        bool oklex = rdbms::SQLLexer::tokenize(sample, toks, &lex_err);
+        print_ok(oklex);
+        if (!oklex) {
+            std::cerr << "  lexer error: " << lex_err << '\n';
+        } else {
+            std::cout << "  tokens:\n";
+            for (const auto &t : toks) {
+                if (t.type == rdbms::SQLTokenType::End) break;
+                std::cout << "   - ";
+                switch (t.type) {
+                    case rdbms::SQLTokenType::Identifier: std::cout << "Identifier: "; break;
+                    case rdbms::SQLTokenType::Number: std::cout << "Number: "; break;
+                    case rdbms::SQLTokenType::String: std::cout << "String: "; break;
+                    case rdbms::SQLTokenType::Keyword: std::cout << "Keyword: "; break;
+                    case rdbms::SQLTokenType::Star: std::cout << "Star: "; break;
+                    case rdbms::SQLTokenType::Comma: std::cout << "Comma: "; break;
+                    case rdbms::SQLTokenType::LParen: std::cout << "LParen: "; break;
+                    case rdbms::SQLTokenType::RParen: std::cout << "RParen: "; break;
+                    case rdbms::SQLTokenType::Equals: std::cout << "Equals: "; break;
+                    case rdbms::SQLTokenType::Semicolon: std::cout << "Semicolon: "; break;
+                    default: std::cout << "Other: "; break;
+                }
+                std::cout << t.text << '\n';
+            }
+
+            rdbms::SQLStatement st;
+            std::string perr;
+            bool okp = rdbms::SQLParser::parse(toks, st, &perr);
+            print_ok(okp);
+            if (!okp) std::cerr << "  parse error: " << perr << '\n';
+            else {
+                std::cout << "  parsed: type=";
+                switch (st.type) {
+                    case rdbms::SQLStatement::Type::Insert: std::cout << "INSERT"; break;
+                    case rdbms::SQLStatement::Type::Select: std::cout << "SELECT"; break;
+                    case rdbms::SQLStatement::Type::Update: std::cout << "UPDATE"; break;
+                    case rdbms::SQLStatement::Type::Delete: std::cout << "DELETE"; break;
+                    default: std::cout << "UNKNOWN"; break;
+                }
+                std::cout << " table=" << st.table << '\n';
+                if (!st.columns.empty()) {
+                    std::cout << "  columns:";
+                    for (auto &c : st.columns) std::cout << ' ' << c;
+                    std::cout << '\n';
+                }
+                if (!st.values.empty()) {
+                    std::cout << "  values:";
+                    for (auto &v : st.values) std::cout << ' ' << v;
+                    std::cout << '\n';
+                }
+            }
+        }
+    }
+
     // --- SQL engine demo using DataManager ---
     rdbms::DataManager dm(mgr);
     rdbms::SQLEngine engine(mgr, dm);
@@ -249,7 +311,7 @@ int run_file_manager_visual_test() {
     std::vector<std::string> cols_out;
     std::string msg;
 
-    print_step(10, "SQL engine demo: INSERT / SELECT / UPDATE / DELETE");
+    print_step(11, "SQL engine demo: INSERT / SELECT / UPDATE / DELETE");
     bool ok_ins1 = engine.execute("INSERT INTO users (id, name) VALUES (1, 'Alice');", rows_out, cols_out, msg);
     print_ok(ok_ins1);
     if (!ok_ins1) { std::cerr << msg << '\n'; return 1; }
@@ -258,7 +320,7 @@ int run_file_manager_visual_test() {
     print_ok(ok_ins2);
     if (!ok_ins2) { std::cerr << msg << '\n'; return 1; }
 
-    print_step(11, "Constraint validation demo");
+    print_step(12, "Constraint validation demo");
     // duplicate primary key
     bool ok_dup = engine.execute("INSERT INTO users (id, name) VALUES (1, 'Charlie');", rows_out, cols_out, msg);
     print_ok(ok_dup);
@@ -324,7 +386,7 @@ int run_file_manager_visual_test() {
     bool ok_drop_db2 = mgr.drop_database("demo_db");
     print_ok(ok_drop_db2);
 
-    print_step(12, "Cleanup");
+    print_step(13, "Cleanup");
     const bool removed_file = FileManager::remove_file(filepath);
     const bool removed_dir = FileManager::remove_directory(dir);
     std::cout << "  remove_file: " << (removed_file ? "OK" : "FAIL") << '\n';

@@ -6,4 +6,4 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
-add_executable(lightdb_demo src/main.cpp src/DemoTest.cpp src/FileManager.cpp src/DatabaseManager.cpp src/ConstraintValidator.cpp src/DataManager.cpp src/SQLEngine.cpp)
+add_executable(lightdb_demo src/main.cpp src/DemoTest.cpp src/FileManager.cpp src/DatabaseManager.cpp src/ConstraintValidator.cpp src/SQLLexer.cpp src/SQLParser.cpp src/DataManager.cpp src/SQLEngine.cpp)
