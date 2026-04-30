@@ -7,7 +7,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include "../include/DemoTest.h"
+#include "../include/Test.h"
 #include "../include/FileManager.h"
 #include "../include/Serializer.h"
 #include "../include/DatabaseManager.h"
@@ -70,6 +70,8 @@ void dump_bytes(const std::vector<char> &data, std::size_t limit, std::size_t as
     }
 
     std::cout << std::dec << '\n';
+    // restore default fill char (spaces) so later formatted output isn't zero-filled
+    std::cout << std::setfill(' ');
 
     std::cout << "  ascii preview (" << ascii_count << " bytes): \"";
     for (std::size_t i = 0; i < ascii_count; ++i) {
@@ -81,7 +83,7 @@ void dump_bytes(const std::vector<char> &data, std::size_t limit, std::size_t as
 
 } // namespace
 
-// Helpers to make SQL demo outputs clearer
+// Helpers to make SQL test outputs clearer
 namespace {
 void print_sql(const std::string &sql) {
     std::cout << "  SQL: " << sql << '\n';
@@ -145,7 +147,7 @@ int run_visual_test(const std::string &mode) {
 
     const bool verbose = (mode != "compact");
 
-    // always write demo log to default path
+    // always write test log to default path
     static const std::string default_log = "data/lightdb_test_output.txt";
     static std::ofstream s_log;
     static std::unique_ptr<TeeBuf> s_tee;
@@ -236,7 +238,7 @@ int run_visual_test(const std::string &mode) {
         return 1;
     }
 
-    // --- Serialization demo: custom record -> binary -> file -> memory -> object ---
+    // --- Serialization test: custom record -> binary -> file -> memory -> object ---
     print_step(7, "Serialize custom record into page 1");
     struct Record {
         uint32_t id;
@@ -306,17 +308,17 @@ int run_visual_test(const std::string &mode) {
         return 1;
     }
 
-    print_step(9, "DatabaseManager demo: create/use db and table");
+    print_step(9, "DatabaseManager test: create/use db and table");
     rdbms::DatabaseManager mgr("data");
-    print_cmd("DatabaseManager::create_database(\"demo_db\")", verbose);
-    bool ok_db = mgr.create_database("demo_db");
+    print_cmd("DatabaseManager::create_database(\"test_db\")", verbose);
+    bool ok_db = mgr.create_database("test_db");
     print_ok(ok_db);
     if (!ok_db) {
         std::cerr << "create_database failed\n";
         return 1;
     }
-    print_cmd("DatabaseManager::use_database(\"demo_db\")", verbose);
-    bool ok_use = mgr.use_database("demo_db");
+    print_cmd("DatabaseManager::use_database(\"test_db\")", verbose);
+    bool ok_use = mgr.use_database("test_db");
     print_ok(ok_use);
     if (!ok_use) {
         std::cerr << "use_database failed\n";
@@ -358,8 +360,8 @@ int run_visual_test(const std::string &mode) {
         std::cout << '\n';
     }
 
-    // --- SQL parser demo (lexer + parser) ---
-    print_step(10, "SQL parser demo: tokenize & parse sample");
+    // --- SQL parser test (lexer + parser) ---
+    print_step(10, "SQL parser test: tokenize & parse sample");
     {
         const std::string sample = "INSERT INTO users (id, name) VALUES (1, 'Alice');";
         std::vector<rdbms::SQLToken> toks;
@@ -418,7 +420,7 @@ int run_visual_test(const std::string &mode) {
         }
     }
 
-    // --- SQL engine demo using DataManager ---
+    // --- SQL engine test using DataManager ---
     rdbms::DataManager dm(mgr);
     rdbms::SQLEngine engine(mgr, dm);
 
@@ -426,36 +428,36 @@ int run_visual_test(const std::string &mode) {
     std::vector<std::string> cols_out;
     std::string msg;
 
-    print_step(11, "SQL DDL demo: CREATE/USE/ALTER/DROP via engine");
+    print_step(11, "SQL DDL test: CREATE/USE/ALTER/DROP via engine");
     {
         std::vector<std::vector<std::string>> dummy_rows;
         std::vector<std::string> dummy_cols;
         std::string dm_msg;
         bool ok;
-        ok = exec_sql(engine, "CREATE DATABASE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
+        ok = exec_sql(engine, "CREATE DATABASE test_db_sql;", dummy_rows, dummy_cols, dm_msg);
         if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = exec_sql(engine, "USE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
+        ok = exec_sql(engine, "USE test_db_sql;", dummy_rows, dummy_cols, dm_msg);
         if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = exec_sql(engine, "CREATE TABLE demo_users (id INT PRIMARY KEY NOT NULL, name STRING);", dummy_rows, dummy_cols, dm_msg);
+        ok = exec_sql(engine, "CREATE TABLE test_users (id INT PRIMARY KEY NOT NULL, name STRING);", dummy_rows, dummy_cols, dm_msg);
         if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = exec_sql(engine, "ALTER TABLE demo_users MODIFY COLUMN name VARCHAR(100) NOT NULL;", dummy_rows, dummy_cols, dm_msg);
+        ok = exec_sql(engine, "ALTER TABLE test_users MODIFY COLUMN name VARCHAR(100) NOT NULL;", dummy_rows, dummy_cols, dm_msg);
         if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = exec_sql(engine, "ALTER TABLE demo_users RENAME COLUMN name TO fullname;", dummy_rows, dummy_cols, dm_msg);
+        ok = exec_sql(engine, "ALTER TABLE test_users RENAME COLUMN name TO fullname;", dummy_rows, dummy_cols, dm_msg);
         if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = exec_sql(engine, "ALTER TABLE demo_users ADD COLUMN age INT;", dummy_rows, dummy_cols, dm_msg);
+        ok = exec_sql(engine, "ALTER TABLE test_users ADD COLUMN age INT;", dummy_rows, dummy_cols, dm_msg);
         if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = exec_sql(engine, "ALTER TABLE demo_users DROP COLUMN age;", dummy_rows, dummy_cols, dm_msg);
+        ok = exec_sql(engine, "ALTER TABLE test_users DROP COLUMN age;", dummy_rows, dummy_cols, dm_msg);
         if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = exec_sql(engine, "DROP TABLE demo_users;", dummy_rows, dummy_cols, dm_msg);
+        ok = exec_sql(engine, "DROP TABLE test_users;", dummy_rows, dummy_cols, dm_msg);
         if (!ok) std::cerr << "  " << dm_msg << '\n';
-        ok = exec_sql(engine, "DROP DATABASE demo_db_sql;", dummy_rows, dummy_cols, dm_msg);
+        ok = exec_sql(engine, "DROP DATABASE test_db_sql;", dummy_rows, dummy_cols, dm_msg);
         if (!ok) std::cerr << "  " << dm_msg << '\n';
-        // restore previously used database for subsequent DML demo
-        ok = exec_sql(engine, "USE demo_db;", dummy_rows, dummy_cols, dm_msg);
+        // restore previously used database for subsequent DML test
+        ok = exec_sql(engine, "USE test_db;", dummy_rows, dummy_cols, dm_msg);
         if (!ok) std::cerr << "  " << dm_msg << '\n';
     }
 
-    print_step(12, "Error handling demo: no DB / unknown table / unknown column");
+    print_step(12, "Error handling test: no DB / unknown table / unknown column");
     {
         std::vector<std::vector<std::string>> dummy_rows2;
         std::vector<std::string> dummy_cols2;
@@ -480,11 +482,11 @@ int run_visual_test(const std::string &mode) {
         ok2 = exec_sql(engine, "DROP TABLE tmp_col_test;", dummy_rows2, dummy_cols2, dm_msg2);
     }
 
-    print_step(13, "SQL engine demo: INSERT / SELECT / UPDATE / DELETE");
+    print_step(13, "SQL engine test: INSERT / SELECT / UPDATE / DELETE");
     if (!exec_sql(engine, "INSERT INTO users (id, name) VALUES (1, 'Alice');", rows_out, cols_out, msg)) { std::cerr << msg << '\n'; return 1; }
     if (!exec_sql(engine, "INSERT INTO users (id, name) VALUES (2, 'Bob');", rows_out, cols_out, msg)) { std::cerr << msg << '\n'; return 1; }
 
-    print_step(14, "Constraint validation demo");
+    print_step(14, "Constraint validation test");
     // duplicate primary key
     bool ok_dup = exec_sql(engine, "INSERT INTO users (id, name) VALUES (1, 'Charlie');", rows_out, cols_out, msg);
     if (ok_dup) { std::cerr << "unexpected duplicate insert success\n"; return 1; }
@@ -513,7 +515,7 @@ int run_visual_test(const std::string &mode) {
     bool ok_drop_table2 = mgr.drop_table("users");
     print_ok(ok_drop_table2);
 
-    bool ok_drop_db2 = mgr.drop_database("demo_db");
+    bool ok_drop_db2 = mgr.drop_database("test_db");
     print_ok(ok_drop_db2);
 
     print_step(15, "Cleanup");

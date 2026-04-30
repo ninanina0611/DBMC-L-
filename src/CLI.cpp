@@ -8,7 +8,7 @@
 #include <memory>
 
 #include "../include/CLI.h"
-#include "../include/DemoTest.h"
+#include "../include/Test.h"
 #include "../include/DatabaseManager.h"
 #include "../include/DataManager.h"
 #include "../include/SQLEngine.h"
