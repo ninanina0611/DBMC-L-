@@ -1,12 +1,12 @@
-#include "../include/SQLEngine.h"
-#include "../include/DatabaseManager.h"
-#include "../include/DataManager.h"
+﻿#include "SQLEngine.h"
+#include "DatabaseManager.h"
+#include "DataManager.h"
 
 #include <algorithm>
 #include <cctype>
 #include <sstream>
-#include "../include/SQLLexer.h"
-#include "../include/SQLParser.h"
+#include "SQLLexer.h"
+#include "SQLParser.h"
 
 namespace rdbms {
 

@@ -1,4 +1,4 @@
-#include "../include/ConstraintValidator.h"
+﻿#include "ConstraintValidator.h"
 
 #include <limits>
 #include <cstdint>
@@ -25,10 +25,16 @@ static bool check_type_and_not_null(const DatabaseManager::Column &col, const st
             }
             return true;
         } else if (col.type == DatabaseManager::Type::INT64) {
-            long long v = std::stoll(val);
-            (void)v;
+            std::stoll(val);
             return true;
-        } else { // STRING
+        } else if (col.type == DatabaseManager::Type::FLOAT || col.type == DatabaseManager::Type::DOUBLE) {
+            std::stod(val);
+            return true;
+        } else if (col.type == DatabaseManager::Type::BOOL) {
+            if (val == "true" || val == "false" || val == "0" || val == "1") return true;
+            std::stoll(val);
+            return true;
+        } else {
             return true;
         }
     } catch (...) {
@@ -54,26 +60,44 @@ bool ConstraintValidator::validate_row(const DatabaseManager::TableSchema &schem
     // primary key uniqueness
     std::vector<size_t> pk_idx;
     for (size_t i = 0; i < schema.columns.size(); ++i) if (schema.columns[i].is_primary) pk_idx.push_back(i);
-    if (pk_idx.empty()) return true;
+    if (pk_idx.empty()) goto check_unique;
 
-    auto make_key = [&](const std::vector<std::string> &row) {
-        std::string k;
-        for (size_t j = 0; j < pk_idx.size(); ++j) {
-            if (j) k.push_back('|');
-            size_t idx = pk_idx[j];
-            if (idx < row.size()) k += row[idx];
+    {
+        auto make_key = [&](const std::vector<std::string> &row) {
+            std::string k;
+            for (size_t j = 0; j < pk_idx.size(); ++j) {
+                if (j) k.push_back('|');
+                size_t idx = pk_idx[j];
+                if (idx < row.size()) k += row[idx];
+            }
+            return k;
+        };
+
+        const std::string mykey = make_key(fields);
+        for (size_t i = 0; i < existing_rows.size(); ++i) {
+            if (static_cast<int>(i) == self_index) continue;
+            const auto &r = existing_rows[i];
+            if (r.size() != schema.columns.size()) continue;
+            if (make_key(r) == mykey) {
+                errmsg = "duplicate primary key";
+                return false;
+            }
         }
-        return k;
-    };
+    }
 
-    const std::string mykey = make_key(fields);
-    for (size_t i = 0; i < existing_rows.size(); ++i) {
-        if (static_cast<int>(i) == self_index) continue;
-        const auto &r = existing_rows[i];
-        if (r.size() != schema.columns.size()) continue;
-        if (make_key(r) == mykey) {
-            errmsg = "duplicate primary key";
-            return false;
+check_unique:
+    for (size_t ci = 0; ci < schema.columns.size(); ++ci) {
+        if (!schema.columns[ci].is_unique || schema.columns[ci].is_primary) continue;
+        const std::string &myval = fields[ci];
+        if (myval.empty()) continue;
+        for (size_t i = 0; i < existing_rows.size(); ++i) {
+            if (static_cast<int>(i) == self_index) continue;
+            const auto &r = existing_rows[i];
+            if (r.size() != schema.columns.size()) continue;
+            if (r[ci] == myval) {
+                errmsg = "duplicate value for UNIQUE column '" + schema.columns[ci].name + "'";
+                return false;
+            }
         }
     }
 

@@ -1,40 +1,79 @@
-# Build directories
-/build/
-/CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
+# OS files
+Thumbs.db
+.DS_Store
 
 # Visual Studio / MSVC
+.vs/
 *.vcxproj*
 *.sln
 *.suo
 *.user
 *.pdb
+*.ilk
+*.ipch
+*.idb
+*.sdf
+*.VC.db
+*.VC.opendb
 
-# Build configurations
-/Debug/
-/Release/
-/RelWithDebInfo/
-/MinSizeRel/
+# IDE/editor files
+.vscode/
+.trae/
+.qtcreator/
+*.iml
 
-# Executables and libraries
+# Build directories (CMake, Ninja, custom)
+build/
+build_gui/
+build_lightdb/
+build_lightdb_msvc/
+build_lightdb_mingw/
+CMakeFiles/
+build.ninja
+
+# CMake generated files
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CTestTestfile.cmake
+
+# Build configurations (ignore anywhere)
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+
+# Executables, libraries and object files
 *.exe
 *.dll
 *.lib
 *.obj
+*.o
+*.so
+*.a
 
-# CMake generated
-Makefile
-CTestTestfile.cmake
+# Qt/auto-generated files
+*_autogen/
+lightdb_gui_autogen/
+moc_*
+ui_*
+qrc_*
+*.moc
+*.qrc
 
 # Generated project files
 lightdb_demo.vcxproj*
 ALL_BUILD.vcxproj*
 ZERO_CHECK.vcxproj*
+lightdb*.vcxproj*
+lightdb*.sln*
 
-# IDE and OS files
-.DS_Store
-Thumbs.db
+# Misc and temp files
+*.log
+*.tmp
+*.temp
+*.orig
+*.swp
 
-# runtime data
-/data/
+# runtime data (local)
+data/

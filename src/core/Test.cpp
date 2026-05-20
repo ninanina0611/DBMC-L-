@@ -1,4 +1,4 @@
-#include <algorithm>
+﻿#include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -7,14 +7,14 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include "../include/Test.h"
-#include "../include/FileManager.h"
-#include "../include/Serializer.h"
-#include "../include/DatabaseManager.h"
-#include "../include/DataManager.h"
-#include "../include/SQLEngine.h"
-#include "../include/SQLLexer.h"
-#include "../include/SQLParser.h"
+#include "Test.h"
+#include "FileManager.h"
+#include "Serializer.h"
+#include "DatabaseManager.h"
+#include "DataManager.h"
+#include "SQLEngine.h"
+#include "SQLLexer.h"
+#include "SQLParser.h"
 
 namespace {
 
@@ -328,8 +328,8 @@ int run_visual_test(const std::string &mode) {
     rdbms::DatabaseManager::TableSchema schema2;
     schema2.table_name = "users";
     schema2.columns = {
-        rdbms::DatabaseManager::Column{"id", rdbms::DatabaseManager::Type::INT32, true, true},
-        rdbms::DatabaseManager::Column{"name", rdbms::DatabaseManager::Type::STRING, false, false}
+        rdbms::DatabaseManager::Column{"id", rdbms::DatabaseManager::Type::INT32, "INT", "", "", true, true},
+        rdbms::DatabaseManager::Column{"name", rdbms::DatabaseManager::Type::STRING, "VARCHAR", "", "", false, false}
     };
 
     bool ok_create_table2 = mgr.create_table(schema2);

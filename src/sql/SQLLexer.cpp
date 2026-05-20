@@ -1,4 +1,4 @@
-#include "../include/SQLLexer.h"
+﻿#include "SQLLexer.h"
 
 #include <cctype>
 #include <algorithm>

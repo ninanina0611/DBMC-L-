@@ -7,9 +7,11 @@
 项目整体架构分为四层，从下到上依次为**数据存储层**、**核心逻辑层**、**SQL解析层**、**交互界面层**，各层低耦合、高内聚，通过接口完成层间交互，便于模块开发、测试与维护。
 
 ## 技术栈
-- **开发语言**：C++（兼具面向对象特性与执行效率，适配数据库底层开发）
+- **开发语言**：C++17（兼具面向对象特性与执行效率，适配数据库底层开发）
+- **GUI框架**：Qt6（跨平台图形界面，提供可视化数据库管理）
 - **存储方案**：本地二进制文件存储（读写快、体积小、实现轻量）
 - **解析方案**：手工词法分析 + 递归下降法语法分析（灵活定制校验规则，适配基础SQL解析）
+- **构建系统**：CMake（跨平台构建，支持MSVC/MinGW）
 - **版本管理**：Git + GitHub（代码追溯、PR审核、版本回滚）
 - **项目协同**：语雀（任务跟踪、甘特图管理、每日进度同步）
 - **开发模型**：敏捷开发（1周迭代周期，增量交付、快速适配）
@@ -27,7 +29,7 @@
 - 核心模块：词法分析模块、语法分析模块、错误处理与提示模块、排序/去重解析模块
 ### 4. 交互界面层（最上层）
 用户操作入口，实现系统与用户的交互，接收输入、反馈执行结果/错误提示。
-- 核心模块：命令行输入模块、结果输出与格式化模块、界面提示与帮助模块
+- 核心模块：命令行输入模块、图形界面模块、结果输出与格式化模块、界面提示与帮助模块
 ### 5. 跨层/扩展功能
 基于各层能力实现的拓展特性，提升系统实用性与可追溯性。
 - 核心模块：操作日志记录模块、索引创建/维护接口模块
@@ -43,6 +45,7 @@
 3. 数据持久化：本地文件存储，程序重启后可加载数据
 4. SQL语法校验：词法/语法错误、对象不存在等精准提示
 5. 命令行交互：支持多行输入与结果格式化展示（交互式 CLI 已实现，历史命令待完善）
+6. 图形界面：基于Qt6的可视化管理界面，支持数据库浏览、SQL编辑、数据增删改查、字段管理
 ### 拓展优化功能
 1. 简单索引：主键索引创建与维护，提升查询效率
 2. 查询优化：支持ORDER BY排序、DISTINCT去重
@@ -50,12 +53,41 @@
 4. 操作日志：记录核心操作与时间，支持问题追溯
 5. 数据备份：本地备份文件导出/导入，防止数据丢失
 
-## 快速开始（待开发完成）
-待项目全模块开发完成后，将提供编译、运行、使用的详细步骤，包括：
-1. 环境搭建（C++编译环境配置）
-2. 项目编译（Makefile/CMake编译命令）
-3. 系统运行（命令行启动方式）
-4. 基础使用（核心SQL语句操作示例）
+## 快速开始
+### 环境要求
+- C++17 编译器（MSVC 2022 / GCC 9+ / Clang 10+）
+- CMake 3.16+
+- Qt6（可选，用于构建GUI）
+
+### 编译与运行
+
+项目提供了 CMake Presets，支持 MSVC 和 MinGW 两种工具链一键配置与构建：
+
+```powershell
+# MSVC (Visual Studio) — 需要 VS 2022 开发者命令提示符
+cmake --preset msvc-vs
+cmake --build --preset msvc-vs
+
+# MSVC (Ninja) — 需要 VS 2022 开发者命令提示符
+cmake --preset msvc
+cmake --build --preset msvc
+
+# MinGW — 需要 MinGW 环境在 PATH 中
+cmake --preset mingw
+cmake --build --preset mingw
+```
+
+构建产物位于对应的 `binaryDir`（`C:/build_lightdb` / `C:/build_lightdb_msvc` / `C:/build_lightdb_mingw`）。
+
+启动方式：
+
+```powershell
+# 启动交互式 CLI
+C:\build_lightdb\Debug\lightdb.exe
+
+# 启动图形界面
+C:\build_lightdb\Debug\lightdb_gui.exe
+```
 
 ## 注意事项
 1. 本项目为**轻量级学习型项目**，仅实现MySQL基础核心功能，不适用生产环境高并发、大数据量场景
@@ -66,41 +98,8 @@
 ---
 **开发状态**：开发中
 
-- **已开发模块**: 数据序列化/反序列化；数据库管理（建库/删库/选库、建表/删表、表结构修改支持）；数据操作模块（`DataManager`：记录存储与基础 CRUD）；约束校验模块（主键唯一/非空/类型校验）；SQL 解析层（`SQLLexer` + `SQLParser`）；简易 SQL 引擎（`SQLEngine`：支持 `INSERT`/`SELECT`/`UPDATE`/`DELETE`）。
+- **已开发模块**: 数据序列化/反序列化；数据库管理（建库/删库/选库、建表/删表、表结构修改支持）；数据操作模块（`DataManager`：记录存储与基础 CRUD）；约束校验模块（主键唯一/非空/类型校验）；SQL 解析层（`SQLLexer` + `SQLParser`）；简易 SQL 引擎（`SQLEngine`：支持 `INSERT`/`SELECT`/`UPDATE`/`DELETE`）；Qt6 图形界面（数据库浏览器、SQL编辑器、数据视图、字段管理）。
 - **集成演示**: 在 `Test` 中包含 `FileManager`、`DatabaseManager`、`DataManager`、`ConstraintValidator`、`SQLLexer`/`SQLParser` 与 `SQLEngine` 的用例（序列化示例、CRUD 与约束校验/解析演示）。
 - **DDL 支持**: 支持基础 DDL：`CREATE DATABASE`、`DROP DATABASE`、`USE`、`CREATE TABLE`、`DROP TABLE`、`ALTER TABLE ADD/DROP/MODIFY/RENAME COLUMN`；已在 `Test` 中提供对应示例。
 - **表结构变更与数据迁移**: 对添加/删除/修改字段操作，系统会对已有 `.bin` 数据文件执行迁移/重写以适配新 schema。迁移采用简单填充值策略：数值字段无法转换时填 `0`；非空字符串字段填单空格；可通过显式提供的迁移默认值覆盖。
 - **错误处理/提示**: 执行层已增强错误提示能力，运行时会在常见错误场景返回更明确的错误信息（例如 `no database selected`、`unknown table: <name>`、`unknown column: <name>`、文件 I/O 错误等），并在 `Test` 中新增了对应的演示用例以便观察行为与信息。
-
-当前可用的快速构建与运行命令（Windows）：
-
-```powershell
-cmake -S . -B build
-cmake --build build --config Debug
-```
-
-启动方式：
-
-```powershell
-# 启动交互式 CLI（默认，进入可交互提示符）
-build\Debug\lightdb.exe
-
-# 在 REPL 中运行脚本化演示/测试：在提示符内输入
-test
-
-# 切换数据根目录：
-root <dir>
-
-# 列出数据库、表：
-databases
-tables
-
-# 退出：
-exit
-```
-
-演示输出（脚本化测试）会写入 `data/lightdb_test_output.txt`，可用 PowerShell 查看：
-
-```powershell
-Get-Content data\lightdb_test_output.txt -Raw
-```
