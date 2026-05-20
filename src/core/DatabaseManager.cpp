@@ -1,6 +1,6 @@
-#include "../include/DatabaseManager.h"
-#include "../include/FileManager.h"
-#include "../include/Serializer.h"
+﻿#include "DatabaseManager.h"
+#include "FileManager.h"
+#include "Serializer.h"
 
 #include <filesystem>
 #include <system_error>
@@ -171,6 +171,35 @@ DatabaseManager::DatabaseManager(const std::string &root_dir) noexcept
     if (root_dir_.empty()) root_dir_ = "data";
 }
 
+std::string DatabaseManager::type_name(Type t) noexcept {
+    switch (t) {
+        case Type::INT32: return "INT32";
+        case Type::INT64: return "INT64";
+        case Type::STRING: return "STRING";
+        case Type::FLOAT: return "FLOAT";
+        case Type::DOUBLE: return "DOUBLE";
+        case Type::BOOL: return "BOOL";
+    }
+    return "STRING";
+}
+
+DatabaseManager::Type DatabaseManager::type_from_name(const std::string &name) noexcept {
+    if (name == "TINYINT" || name == "SMALLINT" || name == "MEDIUMINT" ||
+        name == "INT" || name == "INTEGER" || name == "INT32") return Type::INT32;
+    if (name == "BIGINT" || name == "INT64") return Type::INT64;
+    if (name == "FLOAT" || name == "REAL") return Type::FLOAT;
+    if (name == "DOUBLE" || name == "DOUBLE PRECISION") return Type::DOUBLE;
+    if (name == "BOOL" || name == "BOOLEAN" || name == "BIT") return Type::BOOL;
+    if (name == "DECIMAL" || name == "DEC" || name == "NUMERIC" ||
+        name == "DATE" || name == "TIME" || name == "DATETIME" || name == "TIMESTAMP" ||
+        name == "YEAR" || name == "ENUM" || name == "SET" || name == "JSON" ||
+        name == "CHAR" || name == "VARCHAR" || name == "BINARY" || name == "VARBINARY" ||
+        name == "TINYTEXT" || name == "TEXT" || name == "MEDIUMTEXT" || name == "LONGTEXT" ||
+        name == "TINYBLOB" || name == "BLOB" || name == "MEDIUMBLOB" || name == "LONGBLOB")
+        return Type::STRING;
+    return Type::STRING;
+}
+
 bool DatabaseManager::create_database(const std::string &db_name) noexcept {
     try {
         fs::path p = fs::path(root_dir_) / db_name;
@@ -231,10 +260,15 @@ bool DatabaseManager::write_schema_file(const TableSchema &schema) noexcept {
             rdbms::serialization::write_string(buf, c.name);
             uint8_t t = static_cast<uint8_t>(c.type);
             rdbms::serialization::write_pod(buf, t);
+            rdbms::serialization::write_string(buf, c.display_type);
+            rdbms::serialization::write_string(buf, c.length);
+            rdbms::serialization::write_string(buf, c.scale);
             uint8_t pk = c.is_primary ? 1 : 0;
             rdbms::serialization::write_pod(buf, pk);
             uint8_t nn = c.not_null ? 1 : 0;
             rdbms::serialization::write_pod(buf, nn);
+            uint8_t uq = c.is_unique ? 1 : 0;
+            rdbms::serialization::write_pod(buf, uq);
         }
 
         const std::string meta = meta_file_path(schema.table_name);
@@ -267,12 +301,27 @@ bool DatabaseManager::read_schema_file(const std::string &table_name, TableSchem
             uint8_t t = 0;
             if (!rdbms::serialization::read_pod(buf, offset, t)) return false;
             c.type = static_cast<Type>(t);
+            if (offset < buf.size()) {
+                rdbms::serialization::read_string(buf, offset, c.display_type);
+            }
+            if (c.display_type.empty()) c.display_type = type_name(c.type);
+            if (offset < buf.size()) {
+                rdbms::serialization::read_string(buf, offset, c.length);
+            }
+            if (offset < buf.size()) {
+                rdbms::serialization::read_string(buf, offset, c.scale);
+            }
             uint8_t pk = 0;
             if (!rdbms::serialization::read_pod(buf, offset, pk)) return false;
             c.is_primary = pk != 0;
             uint8_t nn = 0;
             if (!rdbms::serialization::read_pod(buf, offset, nn)) return false;
             c.not_null = nn != 0;
+            uint8_t uq = 0;
+            if (offset < buf.size()) {
+                if (!rdbms::serialization::read_pod(buf, offset, uq)) return false;
+            }
+            c.is_unique = uq != 0;
             schema.columns.push_back(std::move(c));
         }
 

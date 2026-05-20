@@ -1,0 +1,40 @@
+{
+    "configurations": [
+        {
+            "name": "x64-Debug",
+            "generator": "Visual Studio 17 2022",
+            "configurationType": "Debug",
+            "inheritEnvironments": [ "msvc_x64_x64" ],
+            "buildRoot": "C:/build_lightdb/${name}",
+            "installRoot": "C:/build_lightdb/${name}/install",
+            "cmakeCommandArgs": "",
+            "buildCommandArgs": "",
+            "ctestCommandArgs": "",
+            "variables": [
+                {
+                    "name": "CMAKE_PREFIX_PATH",
+                    "value": "C:/Qt/6.9.2/msvc2022_64",
+                    "type": "PATH"
+                }
+            ]
+        },
+        {
+            "name": "x64-Release",
+            "generator": "Visual Studio 17 2022",
+            "configurationType": "Release",
+            "inheritEnvironments": [ "msvc_x64_x64" ],
+            "buildRoot": "C:/build_lightdb/${name}",
+            "installRoot": "C:/build_lightdb/${name}/install",
+            "cmakeCommandArgs": "",
+            "buildCommandArgs": "",
+            "ctestCommandArgs": "",
+            "variables": [
+                {
+                    "name": "CMAKE_PREFIX_PATH",
+                    "value": "C:/Qt/6.9.2/msvc2022_64",
+                    "type": "PATH"
+                }
+            ]
+        }
+    ]
+}

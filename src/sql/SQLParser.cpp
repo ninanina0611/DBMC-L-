@@ -1,4 +1,4 @@
-#include "../include/SQLParser.h"
+﻿#include "SQLParser.h"
 
 #include <cctype>
 #include <string>
@@ -14,6 +14,52 @@ namespace {
 
     static inline bool is_kw(const SQLToken &tk, const char *kw) {
         return tk.type == SQLTokenType::Keyword && tk.text == kw;
+    }
+
+    void apply_type(const std::string &tname, DatabaseManager::Column &col) {
+        col.display_type = tname;
+        col.type = DatabaseManager::type_from_name(tname);
+    }
+
+    static bool accept_token(const std::vector<SQLToken> &toks, size_t &idx, SQLTokenType ty) {
+        if (idx < toks.size() && toks[idx].type == ty) { ++idx; return true; }
+        return false;
+    }
+
+    bool parse_type_params(const std::vector<SQLToken> &tokens, size_t &idx,
+                           DatabaseManager::Column &col, std::string *errmsg) {
+        if (peek_token(tokens, idx).type != SQLTokenType::LParen) return true;
+        idx++;
+        std::string params;
+        bool first = true;
+        while (peek_token(tokens, idx).type != SQLTokenType::RParen) {
+            if (!first) {
+                if (peek_token(tokens, idx).type == SQLTokenType::Comma) {
+                    params += ",";
+                    idx++;
+                }
+            }
+            const SQLToken &tk = peek_token(tokens, idx);
+            if (tk.type == SQLTokenType::Number || tk.type == SQLTokenType::Identifier) {
+                params += tk.text;
+                idx++;
+            } else {
+                if (errmsg) *errmsg = "expected number in type parameters";
+                return false;
+            }
+            first = false;
+        }
+        if (!accept_token(tokens, idx, SQLTokenType::RParen)) {
+            if (errmsg) *errmsg = "expected ')' after type parameters";
+            return false;
+        }
+        col.length = params;
+        auto commaPos = params.find(',');
+        if (commaPos != std::string::npos) {
+            col.length = params.substr(0, commaPos);
+            col.scale = params.substr(commaPos + 1);
+        }
+        return true;
     }
 }
 
@@ -60,20 +106,10 @@ bool SQLParser::parse(const std::vector<SQLToken> &tokens, SQLStatement &out_stm
                     const SQLToken &typetk = peek_token(tokens, idx);
                     if (!(typetk.type == SQLTokenType::Keyword || typetk.type == SQLTokenType::Identifier)) { if (errmsg) *errmsg = "expected type for column"; return false; }
                     std::string tname = typetk.text; idx++;
-                    // handle VARCHAR(size)
-                    if (tname == "VARCHAR" && peek_token(tokens, idx).type == SQLTokenType::LParen) {
-                        // skip ( N )
-                        idx++; // (
-                        if (peek_token(tokens, idx).type == SQLTokenType::Number) idx++;
-                        if (!accept(SQLTokenType::RParen)) { if (errmsg) *errmsg = "expected ')' after type size"; return false; }
-                    }
+                    apply_type(tname, col);
+                    if (!parse_type_params(tokens, idx, col, errmsg)) return false;
 
-                    // map to DatabaseManager::Type
-                    if (tname == "INT" || tname == "INT32") col.type = DatabaseManager::Type::INT32;
-                    else if (tname == "INT64" || tname == "BIGINT") col.type = DatabaseManager::Type::INT64;
-                    else col.type = DatabaseManager::Type::STRING;
-
-                    // optional modifiers: PRIMARY KEY, NOT NULL (order-insensitive)
+                    // optional modifiers: PRIMARY KEY, NOT NULL, UNIQUE (order-insensitive)
                     bool seen_any = true;
                     while (seen_any) {
                         seen_any = false;
@@ -88,6 +124,10 @@ bool SQLParser::parse(const std::vector<SQLToken> &tokens, SQLStatement &out_stm
                             if (!is_kw(peek_token(tokens, idx), "NULL")) { if (errmsg) *errmsg = "expected NULL after NOT"; return false; }
                             idx++;
                             col.not_null = true; seen_any = true; continue;
+                        }
+                        if (is_kw(peek_token(tokens, idx), "UNIQUE")) {
+                            idx++;
+                            col.is_unique = true; seen_any = true; continue;
                         }
                     }
 
@@ -139,15 +179,12 @@ bool SQLParser::parse(const std::vector<SQLToken> &tokens, SQLStatement &out_stm
                 const SQLToken &typetk = peek_token(tokens, idx);
                 if (!(typetk.type == SQLTokenType::Keyword || typetk.type == SQLTokenType::Identifier)) { if (errmsg) *errmsg = "expected type for column"; return false; }
                 std::string tname = typetk.text; idx++;
-                if (tname == "VARCHAR" && peek_token(tokens, idx).type == SQLTokenType::LParen) {
-                    idx++; if (peek_token(tokens, idx).type == SQLTokenType::Number) idx++; if (!accept(SQLTokenType::RParen)) { if (errmsg) *errmsg = "expected ')' after type size"; return false; }
-                }
-                if (tname == "INT" || tname == "INT32") out_stmt.alter_column.type = DatabaseManager::Type::INT32;
-                else if (tname == "INT64" || tname == "BIGINT") out_stmt.alter_column.type = DatabaseManager::Type::INT64;
-                else out_stmt.alter_column.type = DatabaseManager::Type::STRING;
+                apply_type(tname, out_stmt.alter_column);
+                if (!parse_type_params(tokens, idx, out_stmt.alter_column, errmsg)) return false;
                 // optional modifiers
                 if (is_kw(peek_token(tokens, idx), "NOT")) { idx++; if (!is_kw(peek_token(tokens, idx), "NULL")) { if (errmsg) *errmsg = "expected NULL after NOT"; return false; } idx++; out_stmt.alter_column.not_null = true; }
                 if (is_kw(peek_token(tokens, idx), "PRIMARY")) { idx++; if (!is_kw(peek_token(tokens, idx), "KEY")) { if (errmsg) *errmsg = "expected KEY after PRIMARY"; return false; } idx++; out_stmt.alter_column.is_primary = true; }
+                if (is_kw(peek_token(tokens, idx), "UNIQUE")) { idx++; out_stmt.alter_column.is_unique = true; }
                 out_stmt.type = SQLStatement::Type::AlterTableAddColumn;
                 return true;
             }
@@ -184,12 +221,11 @@ bool SQLParser::parse(const std::vector<SQLToken> &tokens, SQLStatement &out_stm
                 const SQLToken &typetk = peek_token(tokens, idx);
                 if (!(typetk.type == SQLTokenType::Keyword || typetk.type == SQLTokenType::Identifier)) { if (errmsg) *errmsg = "expected type for column"; return false; }
                 std::string tname = typetk.text; idx++;
-                if (tname == "VARCHAR" && peek_token(tokens, idx).type == SQLTokenType::LParen) { idx++; if (peek_token(tokens, idx).type == SQLTokenType::Number) idx++; if (!accept(SQLTokenType::RParen)) { if (errmsg) *errmsg = "expected ')' after type size"; return false; } }
-                if (tname == "INT" || tname == "INT32") newcol.type = DatabaseManager::Type::INT32;
-                else if (tname == "INT64" || tname == "BIGINT") newcol.type = DatabaseManager::Type::INT64;
-                else newcol.type = DatabaseManager::Type::STRING;
+                apply_type(tname, newcol);
+                if (!parse_type_params(tokens, idx, newcol, errmsg)) return false;
                 if (is_kw(peek_token(tokens, idx), "NOT")) { idx++; if (!is_kw(peek_token(tokens, idx), "NULL")) { if (errmsg) *errmsg = "expected NULL after NOT"; return false; } idx++; newcol.not_null = true; }
                 if (is_kw(peek_token(tokens, idx), "PRIMARY")) { idx++; if (!is_kw(peek_token(tokens, idx), "KEY")) { if (errmsg) *errmsg = "expected KEY after PRIMARY"; return false; } idx++; newcol.is_primary = true; }
+                if (is_kw(peek_token(tokens, idx), "UNIQUE")) { idx++; newcol.is_unique = true; }
                 out_stmt.alter_column = std::move(newcol);
                 out_stmt.alter_column_name = first_name; // old name
                 out_stmt.type = SQLStatement::Type::AlterTableModifyColumn;

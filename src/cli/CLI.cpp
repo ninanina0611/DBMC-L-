@@ -1,4 +1,4 @@
-#include <algorithm>
+﻿#include <algorithm>
 #include <cctype>
 #include <iomanip>
 #include <iostream>
@@ -7,11 +7,11 @@
 #include <vector>
 #include <memory>
 
-#include "../include/CLI.h"
-#include "../include/Test.h"
-#include "../include/DatabaseManager.h"
-#include "../include/DataManager.h"
-#include "../include/SQLEngine.h"
+#include "CLI.h"
+#include "Test.h"
+#include "DatabaseManager.h"
+#include "DataManager.h"
+#include "SQLEngine.h"
 
 namespace rdbms {
 
