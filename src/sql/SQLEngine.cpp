@@ -1,10 +1,11 @@
-﻿#include "SQLEngine.h"
+#include "SQLEngine.h"
 #include "DatabaseManager.h"
 #include "DataManager.h"
 
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <filesystem>
 #include "SQLLexer.h"
 #include "SQLParser.h"
 
@@ -75,28 +76,61 @@ bool SQLEngine::execute(const std::string &sql_raw,
 
     // dispatch
     if (stmt.type == SQLStatement::Type::Insert) {
-        if (stmt.columns.size() != stmt.values.size()) { message = "column/value count mismatch"; return false; }
-        std::vector<std::pair<std::string,std::string>> pairs;
-        for (size_t i = 0; i < stmt.columns.size(); ++i) pairs.emplace_back(stmt.columns[i], stmt.values[i]);
-        std::string dm_err;
-        bool ok = dm_.insert_row(stmt.table, pairs, &dm_err);
-        message = ok ? "OK" : (dm_err.empty() ? std::string("INSERT failed") : dm_err);
-        return ok;
+        const auto &rows = stmt.values_rows.empty() ? std::vector<std::vector<std::string>>{stmt.values} : stmt.values_rows;
+        size_t inserted = 0;
+        for (const auto &row : rows) {
+            if (stmt.columns.size() != row.size()) {
+                message = "column/value count mismatch at row " + std::to_string(inserted + 1);
+                return false;
+            }
+            std::vector<std::pair<std::string,std::string>> pairs;
+            for (size_t i = 0; i < stmt.columns.size(); ++i) pairs.emplace_back(stmt.columns[i], row[i]);
+            std::string dm_err;
+            if (!dm_.insert_row(stmt.table, pairs, &dm_err)) {
+                message = dm_err.empty() ? ("INSERT failed at row " + std::to_string(inserted + 1)) : dm_err;
+                return false;
+            }
+            ++inserted;
+        }
+        message = "OK " + std::to_string(inserted);
+        return true;
     } else if (stmt.type == SQLStatement::Type::Select) {
         std::string dm_err;
-        bool ok = dm_.select_rows(stmt.table, stmt.columns, stmt.where_col, stmt.where_val, out_rows, out_columns, &dm_err);
+        bool has_group = !stmt.group_by.empty();
+        bool has_agg = false;
+        for (const auto &f : stmt.select_funcs) if (!f.empty()) { has_agg = true; break; }
+        if (has_group || has_agg) {
+            std::vector<AggSelectItem> items;
+            for (size_t i = 0; i < stmt.columns.size(); ++i) {
+                AggSelectItem item;
+                item.name = (i < stmt.select_aliases.size() && !stmt.select_aliases[i].empty())
+                            ? stmt.select_aliases[i] : stmt.columns[i];
+                item.func = (i < stmt.select_funcs.size()) ? stmt.select_funcs[i] : std::string();
+                item.func_arg = (i < stmt.select_func_args.size()) ? stmt.select_func_args[i] : std::string();
+                item.col = (item.func.empty()) ? stmt.columns[i] : std::string();
+                items.push_back(std::move(item));
+            }
+            bool ok = dm_.select_rows_grouped(stmt.table, items,
+                stmt.where_col, stmt.where_val, stmt.where_op,
+                stmt.group_by, stmt.having_col, stmt.having_op, stmt.having_val,
+                stmt.order_by, stmt.order_dir, stmt.limit, stmt.offset,
+                out_rows, out_columns, &dm_err);
+            message = ok ? "OK" : (dm_err.empty() ? std::string("SELECT failed") : dm_err);
+            return ok;
+        }
+        bool ok = dm_.select_rows(stmt.table, stmt.columns, stmt.where_col, stmt.where_val, stmt.where_op, out_rows, out_columns, stmt.order_by, stmt.order_dir, stmt.limit, stmt.offset, &dm_err);
         message = ok ? "OK" : (dm_err.empty() ? std::string("SELECT failed") : dm_err);
         return ok;
     } else if (stmt.type == SQLStatement::Type::Update) {
         size_t affected = 0;
         std::string dm_err;
-        bool ok = dm_.update_rows(stmt.table, stmt.assignments, stmt.where_col, stmt.where_val, affected, &dm_err);
+        bool ok = dm_.update_rows(stmt.table, stmt.assignments, stmt.where_col, stmt.where_val, stmt.where_op, affected, &dm_err);
         message = ok ? ("OK " + std::to_string(affected)) : (dm_err.empty() ? std::string("UPDATE failed") : dm_err);
         return ok;
     } else if (stmt.type == SQLStatement::Type::Delete) {
         size_t affected = 0;
         std::string dm_err;
-        bool ok = dm_.delete_rows(stmt.table, stmt.where_col, stmt.where_val, affected, &dm_err);
+        bool ok = dm_.delete_rows(stmt.table, stmt.where_col, stmt.where_val, stmt.where_op, affected, &dm_err);
         message = ok ? ("OK " + std::to_string(affected)) : (dm_err.empty() ? std::string("DELETE failed") : dm_err);
         return ok;
     }
@@ -108,6 +142,15 @@ bool SQLEngine::execute(const std::string &sql_raw,
         return ok;
     }
     if (stmt.type == SQLStatement::Type::DropDatabase) {
+        // if IF EXISTS was specified and database does not exist, treat as success
+        if (stmt.if_exists) {
+            std::vector<std::string> dbs;
+            if (db_.list_databases(dbs)) {
+                bool found = false;
+                for (const auto &d : dbs) if (d == stmt.db_name) { found = true; break; }
+                if (!found) { message = "OK"; return true; }
+            }
+        }
         bool ok = db_.drop_database(stmt.db_name);
         message = ok ? "OK" : "DROP DATABASE failed";
         return ok;
@@ -131,10 +174,42 @@ bool SQLEngine::execute(const std::string &sql_raw,
     if (stmt.type == SQLStatement::Type::DropTable) {
         if (db_.current_database().empty()) { message = "no database selected"; return false; }
         DatabaseManager::TableSchema tmp;
-        if (!db_.get_schema(stmt.table, tmp)) { message = std::string("unknown table: ") + stmt.table; return false; }
+        if (!db_.get_schema(stmt.table, tmp)) {
+            if (stmt.if_exists) { message = "OK"; return true; }
+            message = std::string("unknown table: ") + stmt.table; return false;
+        }
         bool ok = db_.drop_table(stmt.table);
         message = ok ? "OK" : "DROP TABLE failed";
         return ok;
+    }
+    if (stmt.type == SQLStatement::Type::RenameTable) {
+        if (db_.current_database().empty()) { message = "no database selected"; return false; }
+        namespace fs = std::filesystem;
+        for (const auto &pr : stmt.rename_pairs) {
+            const std::string &oldn = pr.first;
+            const std::string &newn = pr.second;
+            DatabaseManager::TableSchema tmp;
+            if (!db_.get_schema(oldn, tmp)) { message = std::string("unknown table: ") + oldn; return false; }
+            // ensure target does not exist
+            DatabaseManager::TableSchema check;
+            if (db_.get_schema(newn, check)) { message = std::string("table already exists: ") + newn; return false; }
+            const std::string old_meta = db_.meta_file_path(oldn);
+            const std::string old_data = db_.data_file_path(oldn);
+            const std::string new_meta = db_.meta_file_path(newn);
+            const std::string new_data = db_.data_file_path(newn);
+            std::error_code ec;
+            // rename meta first
+            if (fs::exists(old_meta)) {
+                fs::rename(old_meta, new_meta, ec);
+                if (ec) { message = "RENAME TABLE failed"; return false; }
+            }
+            if (fs::exists(old_data)) {
+                fs::rename(old_data, new_data, ec);
+                if (ec) { message = "RENAME TABLE failed"; return false; }
+            }
+        }
+        message = "OK";
+        return true;
     }
     if (stmt.type == SQLStatement::Type::AlterTableAddColumn) {
         if (db_.current_database().empty()) { message = "no database selected"; return false; }
@@ -198,6 +273,22 @@ bool SQLEngine::execute(const std::string &sql_raw,
         newcol.name = stmt.alter_column.name;
         bool ok = db_.modify_column(stmt.alter_table, stmt.alter_column_name, newcol, std::string());
         message = ok ? "OK" : "ALTER TABLE RENAME COLUMN failed";
+        return ok;
+    }
+
+    if (stmt.type == SQLStatement::Type::StartTransaction) {
+        bool ok = db_.start_transaction();
+        message = ok ? "OK" : "START TRANSACTION failed";
+        return ok;
+    }
+    if (stmt.type == SQLStatement::Type::Commit) {
+        bool ok = db_.commit_transaction();
+        message = ok ? "OK" : "COMMIT failed";
+        return ok;
+    }
+    if (stmt.type == SQLStatement::Type::Rollback) {
+        bool ok = db_.rollback_transaction();
+        message = ok ? "OK" : "ROLLBACK failed";
         return ok;
     }
 

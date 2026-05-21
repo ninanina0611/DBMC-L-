@@ -15,6 +15,14 @@ enum class SQLTokenType {
     LParen,
     RParen,
     Equals,
+    Plus,
+    Minus,
+    Slash,
+    Less,
+    Greater,
+    LessEq,
+    GreaterEq,
+    NotEquals,
     Semicolon,
     End
 };

@@ -26,6 +26,8 @@ public:
         bool is_primary = false;
         bool not_null = false;
         bool is_unique = false;
+        bool auto_increment = false;
+        std::string default_value;
     };
 
     struct TableSchema {
@@ -34,6 +36,12 @@ public:
     };
 
     explicit DatabaseManager(const std::string &root_dir = "data") noexcept;
+
+    // Transaction control
+    bool start_transaction() noexcept;
+    bool commit_transaction() noexcept;
+    bool rollback_transaction() noexcept;
+    bool in_transaction() const noexcept;
 
     bool create_database(const std::string &db_name) noexcept;
     bool drop_database(const std::string &db_name) noexcept;
@@ -60,6 +68,8 @@ private:
     std::string root_dir_;
     std::string current_db_;
     std::string db_path_;
+    bool in_transaction_ = false;
+    std::string txn_dir_;
 
     bool write_schema_file(const TableSchema &schema) noexcept;
     bool read_schema_file(const std::string &table_name, TableSchema &schema) const noexcept;

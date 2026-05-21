@@ -56,6 +56,7 @@ if(BUILD_GUI)
             src/gui/NewDatabaseDialog.cpp
             src/gui/NewTableDialog.cpp
             src/gui/FieldManagerWidget.cpp
+            src/gui/LogWidget.cpp
             include/gui/MainWindow.h
             include/gui/DatabaseBrowser.h
             include/gui/SQLEditor.h
@@ -63,6 +64,7 @@ if(BUILD_GUI)
             include/gui/NewDatabaseDialog.h
             include/gui/NewTableDialog.h
             include/gui/FieldManagerWidget.h
+            include/gui/LogWidget.h
         )
         target_include_directories(lightdb_gui PRIVATE
             ${CMAKE_SOURCE_DIR}/include/core

@@ -1,4 +1,4 @@
-﻿#include "DatabaseManager.h"
+#include "DatabaseManager.h"
 #include "FileManager.h"
 #include "Serializer.h"
 
@@ -7,39 +7,61 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <iomanip>
+#include <ctime>
 
 namespace fs = std::filesystem;
 
 namespace rdbms {
 
 namespace {
-    // Helper to convert/normalize values when migrating between column types.
+    static std::string format_numeric(const std::string &val, DatabaseManager::Type new_t,
+                                      const std::string &scale_str) noexcept {
+        try {
+            double dv = val.empty() ? 0.0 : std::stod(val);
+            if (new_t == DatabaseManager::Type::INT32 || new_t == DatabaseManager::Type::INT64) {
+                return std::to_string(static_cast<long long>(dv));
+            }
+            int scale = 0;
+            if (!scale_str.empty()) {
+                try { scale = std::stoi(scale_str); } catch (...) {}
+            }
+            if (scale > 0) {
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(scale) << dv;
+                return oss.str();
+            }
+            std::ostringstream oss;
+            oss << std::setprecision(15) << dv;
+            return oss.str();
+        } catch (...) {
+            return std::string("0");
+        }
+    }
+
     static std::string convert_field(const std::string &old_val,
                                      DatabaseManager::Type old_t,
-                                     DatabaseManager::Type new_t,
-                                     const std::string &default_fill,
-                                     bool new_not_null) noexcept {
+                                     const DatabaseManager::Column &new_col,
+                                     const std::string &default_fill) noexcept {
         try {
-            if (new_t == DatabaseManager::Type::STRING) {
+            if (new_col.type == DatabaseManager::Type::STRING) {
                 if (old_val.empty()) {
                     if (!default_fill.empty()) return default_fill;
-                    if (new_not_null) return std::string(" ");
+                    if (new_col.not_null) return std::string(" ");
                     return std::string();
                 }
                 return old_val;
             }
 
-            // target is numeric
             if (old_val.empty()) {
                 if (!default_fill.empty()) return default_fill;
-                return std::string("0");
+                return format_numeric("0", new_col.type, new_col.scale);
             }
             try {
-                long long v = std::stoll(old_val);
-                return std::to_string(v);
+                return format_numeric(old_val, new_col.type, new_col.scale);
             } catch (...) {
                 if (!default_fill.empty()) return default_fill;
-                return std::string("0");
+                return format_numeric("0", new_col.type, new_col.scale);
             }
         } catch (...) {
             return std::string();
@@ -104,12 +126,32 @@ namespace {
                     if (old_idx >= 0) {
                         const auto &old_col = old_schema.columns[old_idx];
                         const std::string &old_val = old_fields[static_cast<size_t>(old_idx)];
-                        std::string new_val = convert_field(old_val, old_col.type, nc.type, default_fill, nc.not_null);
+                        std::string new_val = convert_field(old_val, old_col.type, nc, default_fill);
                         new_fields.push_back(std::move(new_val));
                     } else {
-                        // column newly added: use default_fill or sensible default
-                        if (!default_fill.empty()) new_fields.push_back(default_fill);
-                        else {
+                        // column newly added: prefer explicit default_fill (argument), then column default, then sensible default
+                        std::string fill = default_fill.empty() ? nc.default_value : default_fill;
+                        if (!fill.empty()) {
+                            // support special CURRENT_TIMESTAMP
+                            std::string up = fill;
+                            std::transform(up.begin(), up.end(), up.begin(), [](unsigned char c){ return std::toupper(c); });
+                            if (up == "CURRENT_TIMESTAMP" || up == "CURRENT_TIMESTAMP()") {
+                                // produce current datetime string
+                                std::time_t t = std::time(nullptr);
+                                std::tm tm;
+#ifdef _MSC_VER
+                                localtime_s(&tm, &t);
+#else
+                                localtime_r(&t, &tm);
+#endif
+                                char buf[32];
+                                if (nc.display_type == "DATE") std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
+                                else std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
+                                new_fields.push_back(std::string(buf));
+                            } else {
+                                new_fields.push_back(fill);
+                            }
+                        } else {
                             if (nc.type == DatabaseManager::Type::STRING) new_fields.push_back(nc.not_null ? std::string(" ") : std::string());
                             else new_fields.push_back(std::string("0"));
                         }
@@ -189,9 +231,10 @@ DatabaseManager::Type DatabaseManager::type_from_name(const std::string &name) n
     if (name == "BIGINT" || name == "INT64") return Type::INT64;
     if (name == "FLOAT" || name == "REAL") return Type::FLOAT;
     if (name == "DOUBLE" || name == "DOUBLE PRECISION") return Type::DOUBLE;
+    // treat DECIMAL/NUMERIC/DEC as numeric (map to DOUBLE) so arithmetic works in UPDATE
+    if (name == "DECIMAL" || name == "DEC" || name == "NUMERIC") return Type::DOUBLE;
     if (name == "BOOL" || name == "BOOLEAN" || name == "BIT") return Type::BOOL;
-    if (name == "DECIMAL" || name == "DEC" || name == "NUMERIC" ||
-        name == "DATE" || name == "TIME" || name == "DATETIME" || name == "TIMESTAMP" ||
+    if (name == "DATE" || name == "TIME" || name == "DATETIME" || name == "TIMESTAMP" ||
         name == "YEAR" || name == "ENUM" || name == "SET" || name == "JSON" ||
         name == "CHAR" || name == "VARCHAR" || name == "BINARY" || name == "VARBINARY" ||
         name == "TINYTEXT" || name == "TEXT" || name == "MEDIUMTEXT" || name == "LONGTEXT" ||
@@ -240,12 +283,99 @@ std::string DatabaseManager::current_database() const noexcept {
 
 std::string DatabaseManager::meta_file_path(const std::string &table_name) const noexcept {
     if (db_path_.empty()) return std::string();
+    // if in transaction, use transactional copy in txn_dir_
+    try {
+        if (in_transaction_) {
+            fs::path txn = fs::path(txn_dir_) / (table_name + ".meta");
+            if (!fs::exists(txn)) {
+                fs::path orig = fs::path(db_path_) / (table_name + ".meta");
+                if (fs::exists(orig)) {
+                    std::error_code ec;
+                    fs::copy_file(orig, txn, ec);
+                } else {
+                    FileManager::create_file(txn.string());
+                }
+            }
+            return txn.string();
+        }
+    } catch (...) {
+        // fallthrough
+    }
     return db_path_ + "/" + table_name + ".meta";
 }
 
 std::string DatabaseManager::data_file_path(const std::string &table_name) const noexcept {
     if (db_path_.empty()) return std::string();
+    try {
+        if (in_transaction_) {
+            fs::path txn = fs::path(txn_dir_) / (table_name + ".bin");
+            if (!fs::exists(txn)) {
+                fs::path orig = fs::path(db_path_) / (table_name + ".bin");
+                if (fs::exists(orig)) {
+                    std::error_code ec;
+                    fs::copy_file(orig, txn, ec);
+                } else {
+                    FileManager::create_file(txn.string());
+                }
+            }
+            return txn.string();
+        }
+    } catch (...) {
+        // fallthrough
+    }
     return db_path_ + "/" + table_name + ".bin";
+}
+
+bool DatabaseManager::start_transaction() noexcept {
+    if (current_db_.empty()) return false;
+    if (in_transaction_) return false;
+    try {
+        fs::path td = fs::path(db_path_) / ".txn";
+        if (!fs::exists(td)) fs::create_directories(td);
+        txn_dir_ = td.string();
+        in_transaction_ = true;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool DatabaseManager::commit_transaction() noexcept {
+    if (!in_transaction_) return false;
+    try {
+        std::error_code ec;
+        for (auto &e : fs::directory_iterator(txn_dir_)) {
+            if (!e.is_regular_file()) continue;
+            fs::path src = e.path();
+            fs::path dest = fs::path(db_path_) / src.filename();
+            if (fs::exists(dest)) fs::remove(dest, ec);
+            fs::rename(src, dest, ec);
+            if (ec) return false;
+        }
+        fs::remove_all(txn_dir_, ec);
+        in_transaction_ = false;
+        txn_dir_.clear();
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool DatabaseManager::rollback_transaction() noexcept {
+    if (!in_transaction_) return false;
+    try {
+        std::error_code ec;
+        fs::remove_all(txn_dir_, ec);
+        in_transaction_ = false;
+        txn_dir_.clear();
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool DatabaseManager::in_transaction() const noexcept {
+    return in_transaction_;
 }
 
 bool DatabaseManager::write_schema_file(const TableSchema &schema) noexcept {
@@ -269,6 +399,10 @@ bool DatabaseManager::write_schema_file(const TableSchema &schema) noexcept {
             rdbms::serialization::write_pod(buf, nn);
             uint8_t uq = c.is_unique ? 1 : 0;
             rdbms::serialization::write_pod(buf, uq);
+            uint8_t ai = c.auto_increment ? 1 : 0;
+            rdbms::serialization::write_pod(buf, ai);
+            // optional default value (newer schema versions)
+            rdbms::serialization::write_string(buf, c.default_value);
         }
 
         const std::string meta = meta_file_path(schema.table_name);
@@ -322,6 +456,17 @@ bool DatabaseManager::read_schema_file(const std::string &table_name, TableSchem
                 if (!rdbms::serialization::read_pod(buf, offset, uq)) return false;
             }
             c.is_unique = uq != 0;
+            uint8_t ai = 0;
+            if (offset < buf.size()) {
+                if (!rdbms::serialization::read_pod(buf, offset, ai)) return false;
+            }
+            c.auto_increment = ai != 0;
+            // optional default value (newer schema versions)
+            if (offset < buf.size()) {
+                std::string dv;
+                if (!rdbms::serialization::read_string(buf, offset, dv)) return false;
+                c.default_value = dv;
+            }
             schema.columns.push_back(std::move(c));
         }
 

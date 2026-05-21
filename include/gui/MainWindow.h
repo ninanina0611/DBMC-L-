@@ -3,6 +3,8 @@
 #include <QMainWindow>
 #include <memory>
 
+class QCloseEvent;
+
 namespace rdbms {
 class DatabaseManager;
 class DataManager;
@@ -13,6 +15,7 @@ class DatabaseBrowser;
 class SQLEditor;
 class TableDataView;
 class FieldManagerWidget;
+class LogWidget;
 class QTabWidget;
 
 class MainWindow : public QMainWindow {
@@ -21,6 +24,9 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(const QString &rootDir = "data", QWidget *parent = nullptr);
     ~MainWindow() override;
+
+protected:
+    void closeEvent(QCloseEvent *event) override;
 
 private slots:
     void onExecuteSQL(const QString &sql);
@@ -31,6 +37,7 @@ private slots:
     void onDropTable(const QString &name = QString());
     void onManageFields(const QString &tableName = QString());
     void onChangeRoot();
+    void onOpenScript();
     void onAbout();
     void onTableSelected(const QString &tableName);
     void onDatabaseSelected(const QString &dbName);
@@ -40,6 +47,7 @@ private:
     void setupStatusBar();
     void setupCentralWidget();
     void updateMenuState();
+    QString logFilePath() const;
 
     std::unique_ptr<rdbms::DatabaseManager> dbMgr_;
     std::unique_ptr<rdbms::DataManager> dataMgr_;
@@ -49,6 +57,7 @@ private:
     SQLEditor *sqlEditor_ = nullptr;
     TableDataView *dataView_ = nullptr;
     FieldManagerWidget *fieldMgr_ = nullptr;
+    LogWidget *logWidget_ = nullptr;
     QTabWidget *rightTab_ = nullptr;
 
     QAction *dropDbAction_ = nullptr;

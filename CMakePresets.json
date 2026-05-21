@@ -10,7 +10,7 @@
             "name": "msvc",
             "displayName": "MSVC 2022 + Qt6 (Ninja)",
             "generator": "Ninja",
-            "binaryDir": "C:/build_lightdb_msvc",
+            "binaryDir": "build_lightdb_msvc",
             "cacheVariables": {
                 "CMAKE_PREFIX_PATH": "C:/Qt/6.9.2/msvc2022_64",
                 "CMAKE_BUILD_TYPE": "Debug"
@@ -26,7 +26,7 @@
             "displayName": "MSVC 2022 + Qt6 (Visual Studio)",
             "generator": "Visual Studio 17 2022",
             "architecture": "x64",
-            "binaryDir": "C:/build_lightdb",
+            "binaryDir": "build_lightdb",
             "cacheVariables": {
                 "CMAKE_PREFIX_PATH": "C:/Qt/6.9.2/msvc2022_64"
             },
@@ -40,7 +40,7 @@
             "name": "mingw",
             "displayName": "MinGW + Qt6",
             "generator": "Ninja",
-            "binaryDir": "C:/build_lightdb_mingw",
+            "binaryDir": "build_lightdb_mingw",
             "cacheVariables": {
                 "CMAKE_PREFIX_PATH": "C:/Qt/6.9.2/mingw_64",
                 "CMAKE_C_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/gcc.exe",

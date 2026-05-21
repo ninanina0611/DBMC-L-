@@ -15,6 +15,9 @@ public:
     void setSqlText(const QString &text);
     void clearSql();
 
+public slots:
+    void onImportScript();
+
 signals:
     void executeRequested(const QString &sql);
 
@@ -25,4 +28,5 @@ private:
     QPlainTextEdit *editor_ = nullptr;
     QPushButton *executeBtn_ = nullptr;
     QPushButton *clearBtn_ = nullptr;
+    QPushButton *importBtn_ = nullptr;
 };

@@ -4,6 +4,8 @@
 #include "SQLEngine.h"
 
 #include <QTableWidget>
+#include <QStyledItemDelegate>
+#include <QPalette>
 #include <QPushButton>
 #include <QLabel>
 #include <QVBoxLayout>
@@ -19,6 +21,22 @@ TableDataView::TableDataView(QWidget *parent)
     layout->setSpacing(2);
 
     table_ = new QTableWidget;
+    // 安装自定义委托，确保编辑器背景不透明，避免编辑时出现底层文本透出造成的重影/错位
+    class EditorBackgroundDelegate : public QStyledItemDelegate {
+    public:
+        explicit EditorBackgroundDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
+        QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+            QWidget *ed = QStyledItemDelegate::createEditor(parent, option, index);
+            if (ed) {
+                ed->setAutoFillBackground(true);
+                QPalette pal = ed->palette();
+                pal.setColor(QPalette::Base, option.palette.color(QPalette::Base));
+                ed->setPalette(pal);
+            }
+            return ed;
+        }
+    };
+    table_->setItemDelegate(new EditorBackgroundDelegate(table_));
     table_->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
     table_->setSelectionBehavior(QAbstractItemView::SelectItems);
     table_->setAlternatingRowColors(true);
@@ -85,7 +103,7 @@ void TableDataView::loadTable(const QString &tableName) {
     std::string msg;
 
     bool ok = dataMgr_->select_rows(tableName.toStdString(),
-                                     {}, "", "",
+                                     {}, "", "", "=",
                                      rows, cols, &msg);
 
     if (ok) {
@@ -192,6 +210,7 @@ void TableDataView::onDeleteRow() {
     bool ok = dataMgr_->delete_rows(currentTable_.toStdString(),
                                      pkColName.toStdString(),
                                      pkValue.toStdString(),
+                                     "=",
                                      affected, &msg);
 
     if (ok) {
@@ -262,6 +281,7 @@ void TableDataView::onApply() {
                                        setValues,
                                        pkColName.toStdString(),
                                        originalPk.toStdString(),
+                                       "=",
                                        affected, &msg)) {
                 updateCount++;
             } else {
